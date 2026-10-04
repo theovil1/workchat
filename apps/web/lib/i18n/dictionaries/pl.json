@@ -1501,6 +1501,33 @@
       "fr": "piątek",
       "sa": "sobotę",
       "su": "niedzielę"
-    }
+    },
+    "title": "Kalendarz",
+    "previous": "Poprzedni okres",
+    "next": "Następny okres",
+    "allSpaces": "Wszystkie moje przestrzenie",
+    "filter": "Przestrzenie pokazane w całości",
+    "mine": "Ja",
+    "calendars": "Kalendarze",
+    "show": "Pokaż {{name}}",
+    "hide": "Ukryj {{name}}",
+    "settingsOf": "Ustawienia: {{name}}",
+    "newCalendarIn": "Nowy kalendarz w: {{name}}",
+    "newEvent": "Nowe wydarzenie",
+    "newEventOn": "Nowe wydarzenie: {{day}}",
+    "nothingPlanned": "Nic nie zaplanowano w tym okresie.",
+    "allDay": "Cały dzień",
+    "loading": "Wczytywanie kalendarza…",
+    "loadFailed": "Nie udało się wczytać kalendarza",
+    "view": {
+      "month": "Miesiąc",
+      "week": "Tydzień",
+      "day": "Dzień",
+      "list": "Lista"
+    },
+    "more_one": "+{{count}} inne",
+    "more_few": "+{{count}} inne",
+    "more_many": "+{{count}} innych",
+    "more_other": "+{{count}} innych"
   }
 }

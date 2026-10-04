@@ -1405,6 +1405,31 @@
       "fr": "Friday",
       "sa": "Saturday",
       "su": "Sunday"
-    }
+    },
+    "title": "Calendar",
+    "previous": "Previous period",
+    "next": "Next period",
+    "allSpaces": "All my spaces",
+    "filter": "Spaces shown in full",
+    "mine": "Me",
+    "calendars": "Calendars",
+    "show": "Show {{name}}",
+    "hide": "Hide {{name}}",
+    "settingsOf": "Settings of {{name}}",
+    "newCalendarIn": "New calendar in {{name}}",
+    "newEvent": "New event",
+    "newEventOn": "New event on {{day}}",
+    "nothingPlanned": "Nothing planned in this period.",
+    "allDay": "All day",
+    "loading": "Loading the calendar…",
+    "loadFailed": "The calendar could not be loaded",
+    "view": {
+      "month": "Month",
+      "week": "Week",
+      "day": "Day",
+      "list": "List"
+    },
+    "more_one": "+{{count}} more",
+    "more_other": "+{{count}} more"
   }
 }

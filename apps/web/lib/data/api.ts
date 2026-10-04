@@ -2537,6 +2537,8 @@ export type RealtimeHandlers = {
   onFilesUpdated?: (spaceId: string, file: SpaceFile, conversationId?: string) => void;
   /** Who is editing a file in the office editor changed. */
   onFilesEditing?: (spaceId: string, fileId: string, editors: FileEditor[]) => void;
+  /** A calendar, its settings or its events changed: whatever shows it reloads. */
+  onCalendarChanged?: (calendarId: string) => void;
 };
 
 /** A live realtime connection: close it on teardown, and signal typing over it. */
@@ -2570,6 +2572,7 @@ const REALTIME_EVENTS = [
   "files.deleted",
   "files.updated",
   "files.editing",
+  "calendar.changed",
 ] as const;
 
 /** How many failed WebSocket attempts, none of which ever opened, before falling back to SSE. */
@@ -2726,6 +2729,9 @@ export function connectRealtime(handlers: RealtimeHandlers): RealtimeConnection 
         break;
       case "files.deleted":
         handlers.onFilesDeleted?.(String(payload.space_id), (payload.file_ids as string[]) ?? []);
+        break;
+      case "calendar.changed":
+        handlers.onCalendarChanged?.(String(payload.calendar_id));
         break;
       case "files.updated":
         handlers.onFilesUpdated?.(

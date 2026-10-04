@@ -184,3 +184,13 @@ export function layoutDay<T extends { allDay: boolean; start: string; end: strin
   close();
   return out;
 }
+
+/** Whether an occurrence touches a local day: an all-day one from its start date to the day before
+ *  its end date, a timed one on every day from its start to just before its end. */
+export function occursOn(occurrence: { allDay: boolean; start: string; end: string }, day: string, tz: string): boolean {
+  if (occurrence.allDay) return occurrence.start <= day && day < occurrence.end;
+  const first = localDay(occurrence.start, tz);
+  const endAt = Date.parse(occurrence.end);
+  const last = endAt > Date.parse(occurrence.start) ? localDay(new Date(endAt - 1).toISOString(), tz) : first;
+  return first <= day && day <= last;
+}

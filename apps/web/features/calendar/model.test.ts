@@ -1,7 +1,7 @@
 // Run with `pnpm --filter @ruchoir/web test` (Node's own runner, types stripped by Node).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inFilter, layoutDay, localDay, rangeFor, zonedTime } from "./model.ts";
+import { inFilter, layoutDay, localDay, occursOn, rangeFor, zonedTime } from "./model.ts";
 
 const PARIS = "Europe/Paris";
 
@@ -72,4 +72,18 @@ test("local days and wall times read in the zone", () => {
   assert.equal(localDay("2026-10-20T22:30:00Z", "America/New_York"), "2026-10-20");
   assert.equal(zonedTime("2026-10-26", 9 * 60, PARIS), "2026-10-26T08:00:00.000Z");
   assert.equal(zonedTime("2026-07-01", 9 * 60, PARIS), "2026-07-01T07:00:00.000Z");
+});
+
+test("an occurrence is on every local day it touches", () => {
+  const night = { allDay: false, start: "2026-10-20T20:00:00Z", end: "2026-10-21T06:00:00Z" };
+  assert.equal(occursOn(night, "2026-10-20", PARIS), true);
+  assert.equal(occursOn(night, "2026-10-21", PARIS), true);
+  assert.equal(occursOn(night, "2026-10-22", PARIS), false);
+  // Ending exactly at midnight does not spill over.
+  const evening = { allDay: false, start: "2026-10-20T18:00:00Z", end: "2026-10-20T22:00:00Z" };
+  assert.equal(occursOn(evening, "2026-10-21", PARIS), false);
+  const leave = { allDay: true, start: "2026-10-07", end: "2026-10-09" };
+  assert.deepEqual(["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"].map((d) => occursOn(leave, d, PARIS)), [false, true, true, false]);
+  const instant = { allDay: false, start: "2026-10-20T07:00:00Z", end: "2026-10-20T07:00:00Z" };
+  assert.equal(occursOn(instant, "2026-10-20", PARIS), true);
 });

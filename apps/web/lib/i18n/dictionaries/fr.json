@@ -1412,6 +1412,32 @@
       "fr": "vendredi",
       "sa": "samedi",
       "su": "dimanche"
-    }
+    },
+    "title": "Calendrier",
+    "previous": "Période précédente",
+    "next": "Période suivante",
+    "allSpaces": "Tous mes espaces",
+    "filter": "Espaces affichés en entier",
+    "mine": "Moi",
+    "calendars": "Calendriers",
+    "show": "Afficher {{name}}",
+    "hide": "Masquer {{name}}",
+    "settingsOf": "Réglages de {{name}}",
+    "newCalendarIn": "Nouveau calendrier dans {{name}}",
+    "newEvent": "Nouvel événement",
+    "newEventOn": "Nouvel événement le {{day}}",
+    "nothingPlanned": "Rien de prévu sur cette période.",
+    "allDay": "Journée",
+    "loading": "Chargement du calendrier…",
+    "loadFailed": "Chargement du calendrier impossible",
+    "view": {
+      "month": "Mois",
+      "week": "Semaine",
+      "day": "Jour",
+      "list": "Liste"
+    },
+    "more_one": "+{{count}} autre",
+    "more_many": "+{{count}} autres",
+    "more_other": "+{{count}} autres"
   }
 }

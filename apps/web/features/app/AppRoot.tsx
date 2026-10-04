@@ -78,6 +78,8 @@ import { apiErrorCode, isApiError } from "@/lib/data/http";
 import { clearAuthLink, forgetInvite, readAuthLink, readRememberedInvite, rememberInvite } from "@/lib/authLink";
 import { fileUrl, readSpaceLocation, writeSpaceLocation } from "@/lib/spaceUrl";
 import { OfficeEditor } from "@/features/office/OfficeEditor";
+import { CalendarScreen } from "@/features/calendar/CalendarScreen";
+import { emitCalendarChanged } from "@/lib/calendarEvents";
 import { emitFileEvent } from "@/lib/fileEvents";
 import type {
   Channel,
@@ -419,6 +421,7 @@ function authMessage(err: unknown, fallbackKey: TranslationKey): TranslationKey 
 /** Screen names, for the tab title and the compact top bar. Conversations name themselves. */
 const VIEW_TITLES: Record<string, TranslationKey> = {
   files: key("sidebar.spaceFiles"),
+  calendar: key("calendar.title"),
   settings: key("sidebar.spaceSettings"),
   prefs: key("prefs.title"),
   "instance-admin": key("admin.screenTitle"),
@@ -633,7 +636,7 @@ function AppShell() {
   const compact = layout === "phone";
   const touch = useTouch();
   const tablet = layout === "tablet";
-  const [mobileTab, setMobileTab] = useState<"home" | "messages" | "activity">("home");
+  const [mobileTab, setMobileTab] = useState<"home" | "messages" | "calendar" | "activity">("home");
   const [mobileContent, setMobileContent] = useState(false);
   const profileFromTabs = useRef(false);
   const [spaceSheet, setSpaceSheet] = useState(false);
@@ -1467,6 +1470,7 @@ function AppShell() {
       onFilesUpdated: (spaceId, file, conversationId) =>
         emitFileEvent({ type: "updated", spaceId, file, conversationId }),
       onFilesEditing: (spaceId, fileId, editors) => emitFileEvent({ type: "editing", spaceId, fileId, editors }),
+      onCalendarChanged: (calendarId) => emitCalendarChanged(calendarId),
       onFilesDeleted: (spaceId, fileIds) => {
         if (fileIds.length === 0) return;
         emitFileEvent({ type: "deleted", spaceId, fileIds });
@@ -3758,6 +3762,8 @@ function AppShell() {
   // The import is a modal now, not a full screen, so the app has to stay drawn behind it rather than
   // going blank. The content pane and its title fall back to whatever view the import was opened
   // over. Prefs and instance admin still replace the screen, so they are not folded in here.
+  // The calendar draws times in the viewer's own zone: their profile's, else this browser's.
+  const viewerTimeZone = session?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const contentView = view === "import" ? prevView : view;
   const contentTitle = contentView === "channel" ? (dm ? dm.name : `# ${chan.name}`) : (VIEW_TITLES[contentView] ? t(VIEW_TITLES[contentView]) : wsName);
 
@@ -4028,6 +4034,16 @@ function AppShell() {
             ...channels.filter((c) => c.member !== false).map((c) => ({ id: c.id, name: c.name, kind: "channel" as const, fav: c.fav })),
             ...visibleDms.filter((d) => !d.bot).map((d) => ({ id: d.id, name: d.name, kind: "dm" as const, lastAt: d.lastMessage?.at })),
           ]}
+        />
+      ) : null}
+      {contentView === "calendar" ? (
+        <CalendarScreen
+          key={ws}
+          compact={compact}
+          timeZone={viewerTimeZone}
+          spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
+          spaceId={ws}
+          onBack={compact ? backToTabs : undefined}
         />
       ) : null}
       {contentView === "settings" ? (
@@ -4469,6 +4485,14 @@ function AppShell() {
             </div>
           </>
         ) : null}
+        {mobileTab === "calendar" ? (
+          <CalendarScreen
+            compact
+            timeZone={viewerTimeZone}
+            spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
+            rememberFilter
+          />
+        ) : null}
         {mobileTab === "activity" ? (
           <>
             <MobileHeader title={t("tabs.activity")} currentUser={currentUser} presence={myPresence} onYou={() => setYouSheet(true)} onSearch={() => setModal("search")} />
@@ -4484,7 +4508,7 @@ function AppShell() {
             </div>
           </>
         ) : null}
-        {mobileTab !== "activity" ? <ComposeFab onClick={() => setModal("newMessage")} /> : null}
+        {mobileTab === "home" || mobileTab === "messages" ? <ComposeFab onClick={() => setModal("newMessage")} /> : null}
       </main>
     );
     return (
@@ -4506,10 +4530,11 @@ function AppShell() {
               tabs={[
                 { id: "home", label: t("tabs.home"), icon: "house", badge: mentionUnread || undefined },
                 { id: "messages", label: t("tabs.messages"), icon: "message-square", badge: visibleDms.reduce((n, d) => n + d.unread, 0) || undefined },
+                { id: "calendar", label: t("calendar.title"), icon: "calendar" },
                 { id: "activity", label: t("tabs.activity"), icon: "bell", badge: notifUnread || undefined },
               ]}
               active={mobileTab}
-              onSelect={(id) => setMobileTab(id as "home" | "messages" | "activity")}
+              onSelect={(id) => setMobileTab(id as "home" | "messages" | "calendar" | "activity")}
             />
           )}
         </div>
