@@ -11413,3 +11413,6 @@ async fn a_listing_does_not_hide_a_dead_tab_from_the_sweep() {
         .expect("those with the list open hear it");
     assert_eq!(left["payload"]["editors"].as_array().unwrap().len(), 0);
 }
+
+/// The calendar's end-to-end tests, kept in their own file; they reuse the helpers above.
+mod calendar_tests;

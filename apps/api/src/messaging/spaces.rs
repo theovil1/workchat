@@ -214,6 +214,10 @@ pub(crate) async fn create_owned_space<C: ConnectionTrait>(
     }
     .insert(txn)
     .await?;
+    // And its first calendar, named in its owner's language.
+    crate::calendar::authz::create_space_default(txn, space_id, Some(owner))
+        .await
+        .map_err(|_| ApiError::Internal)?;
     let mut space = spaces::Entity::find_by_id(space_id)
         .one(txn)
         .await?

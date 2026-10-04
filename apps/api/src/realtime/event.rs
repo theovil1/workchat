@@ -227,6 +227,14 @@ impl RealtimeEnvelope {
     pub fn notification_created(payload: impl Serialize) -> Self {
         Self::global("notification.created", payload)
     }
+
+    /// A calendar, its settings or its events changed: whoever shows it reloads what is on screen.
+    pub fn calendar_changed(calendar_id: Uuid) -> Self {
+        Self::global(
+            "calendar.changed",
+            serde_json::json!({ "calendar_id": calendar_id }),
+        )
+    }
 }
 
 /// The wire type carried between API instances over the `rt:fanout` Valkey channel.

@@ -297,7 +297,9 @@ pub fn router(state: AppState) -> Router {
             state.config.upload_max_bytes.saturating_add(1 << 20) as usize,
         ))
         // Live office editing: opening a file in the editor, blank documents (404 when off).
-        .merge(crate::office::router());
+        .merge(crate::office::router())
+        // The calendar: calendars, events, reminders, subscription addresses.
+        .merge(crate::calendar::router());
 
     // Optional self-hosted emoji pack. `ServeDir` handles path traversal safely and returns 404
     // for missing files, which the client treats as "no asset" and renders the native glyph. The
