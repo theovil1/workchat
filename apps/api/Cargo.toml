@@ -43,13 +43,14 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 
 # The calendar: recurrence rules (RFC 5545) expanded in the event's own time zone, and the iCal
 # subscription file. `rrule` is a community project led by an independent maintainer (Fredrik
-# Meringdal), `icalendar` by Hendrik Sollich (Dresden, Germany), `chrono` and `chrono-tz` by the
+# Meringdal), `icalendar` by Hendrik Sollich (Dresden, Germany; its parser pulls `nom-language`, by
+# Geoffroy Couprie, France), `chrono` and `chrono-tz` by the
 # community chronotope project; all MIT or Apache-2.0. `chrono` is what `rrule` speaks and stays
 # inside `calendar/`: everything outside it uses `time`.
 rrule = "0.14"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 chrono-tz = "0.10.4"
-icalendar = { version = "0.17.14", default-features = false }
+icalendar = { version = "0.17.14", default-features = false, features = ["parser"] }
 
 # Data layer: PostgreSQL via SeaORM, Valkey via fred, migrations from the workspace crate.
 sea-orm = { workspace = true }

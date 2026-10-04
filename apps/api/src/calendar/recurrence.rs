@@ -88,6 +88,132 @@ pub fn known_time_zone(name: &str) -> bool {
     name.parse::<chrono_tz::Tz>().is_ok()
 }
 
+/// An instant as the wall clock of `tzid` shows it, the way iCalendar writes a local time
+/// (`20261026T090000`); `None` for an unknown zone.
+pub fn local_wall_time(instant: OffsetDateTime, tzid: &str) -> Option<String> {
+    let tz = tzid.parse::<chrono_tz::Tz>().ok()?;
+    Some(
+        to_chrono(instant)
+            .with_timezone(&tz)
+            .format("%Y%m%dT%H%M%S")
+            .to_string(),
+    )
+}
+
+/// A `VTIMEZONE` block for `tzid`, its daylight saving changes written as yearly rules starting in
+/// `year`: what a calendar client needs to read the `TZID` of the events. `None` for an unknown
+/// zone.
+pub fn vtimezone(tzid: &str, year: i32) -> Option<String> {
+    use chrono::{Datelike, Offset, TimeZone};
+    use chrono_tz::OffsetName;
+
+    let tz = tzid.parse::<chrono_tz::Tz>().ok()?;
+    let at = |seconds: i64| {
+        let instant = chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 0)
+            .unwrap_or(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH);
+        tz.offset_from_utc_datetime(&instant.naive_utc())
+    };
+    let seconds_of = |offset: &chrono_tz::TzOffset| offset.fix().local_minus_utc();
+    let text = |seconds: i32| {
+        let sign = if seconds < 0 { '-' } else { '+' };
+        let minutes = seconds.unsigned_abs() / 60;
+        format!("{sign}{:02}{:02}", minutes / 60, minutes % 60)
+    };
+    let name = |offset: &chrono_tz::TzOffset| {
+        offset
+            .abbreviation()
+            .filter(|n| n.chars().all(|c| c.is_ascii_alphabetic()))
+            .map(|n| format!("TZNAME:{n}\r\n"))
+            .unwrap_or_default()
+    };
+
+    // Find the year's changes: day by day at noon, then hour by hour on the day it changed.
+    let start = chrono::Utc
+        .with_ymd_and_hms(year, 1, 1, 12, 0, 0)
+        .single()?
+        .timestamp();
+    let mut transitions = Vec::new();
+    let mut previous = at(start);
+    for day in 1..=366 {
+        let noon = start + day * 86_400;
+        let offset = at(noon);
+        if seconds_of(&offset) != seconds_of(&previous) {
+            let mut hour = noon - 86_400;
+            while seconds_of(&at(hour + 3_600)) == seconds_of(&previous) {
+                hour += 3_600;
+            }
+            transitions.push((hour + 3_600, previous, offset));
+        }
+        previous = offset;
+    }
+
+    let mut out = format!("BEGIN:VTIMEZONE\r\nTZID:{tzid}\r\n");
+    if transitions.is_empty() {
+        let offset = at(start);
+        out.push_str(&format!(
+            "BEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:{0}\r\n\
+             TZOFFSETTO:{0}\r\n{1}END:STANDARD\r\n",
+            text(seconds_of(&offset)),
+            name(&offset),
+        ));
+    }
+    for (moment, before, after) in &transitions {
+        let kind = if seconds_of(after) > seconds_of(before) {
+            "DAYLIGHT"
+        } else {
+            "STANDARD"
+        };
+        // The wall clock just before the change, in the offset that was in force.
+        let local = chrono::DateTime::<chrono::Utc>::from_timestamp(
+            moment + i64::from(seconds_of(before)),
+            0,
+        )?
+        .naive_utc();
+        let date = local.date();
+        let last_days = date.day() + 7 > days_in_month(date.year(), date.month());
+        let ordinal = if last_days {
+            "-1".to_owned()
+        } else {
+            ((date.day() - 1) / 7 + 1).to_string()
+        };
+        let weekday = match date.weekday() {
+            chrono::Weekday::Mon => "MO",
+            chrono::Weekday::Tue => "TU",
+            chrono::Weekday::Wed => "WE",
+            chrono::Weekday::Thu => "TH",
+            chrono::Weekday::Fri => "FR",
+            chrono::Weekday::Sat => "SA",
+            chrono::Weekday::Sun => "SU",
+        };
+        out.push_str(&format!(
+            "BEGIN:{kind}\r\nDTSTART:{}\r\nRRULE:FREQ=YEARLY;BYMONTH={};BYDAY={ordinal}{weekday}\r\n\
+             TZOFFSETFROM:{}\r\nTZOFFSETTO:{}\r\n{}END:{kind}\r\n",
+            local.format("%Y%m%dT%H%M%S"),
+            date.month(),
+            text(seconds_of(before)),
+            text(seconds_of(after)),
+            name(after),
+        ));
+    }
+    out.push_str("END:VTIMEZONE\r\n");
+    Some(out)
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    let next = if month == 12 {
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+    };
+    next.and_then(|n| n.pred_opt())
+        .map_or(31, |last| chrono::Datelike::day(&last))
+}
+
+/// When the occurrence `id` of a series whose first occurrence is `series` happens, unmoved.
+pub fn occurrence_when(series: &When, id: RecurrenceId) -> When {
+    shifted(series, recurrence_instant(&id))
+}
+
 /// An occurrence cancelled or moved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExceptionInput {
@@ -1009,5 +1135,70 @@ mod tests {
         assert!(known_time_zone("America/New_York"));
         assert!(!known_time_zone("Mars/Olympus"));
         assert!(!known_time_zone(""));
+    }
+
+    #[test]
+    fn wall_time_is_read_in_the_events_zone() {
+        assert_eq!(
+            local_wall_time(at("2026-10-26T08:00:00Z"), "Europe/Paris").as_deref(),
+            Some("20261026T090000")
+        );
+        assert_eq!(
+            local_wall_time(at("2026-07-01T08:00:00Z"), "Europe/Paris").as_deref(),
+            Some("20260701T100000")
+        );
+        assert_eq!(
+            local_wall_time(at("2026-07-01T08:00:00Z"), "Mars/Olympus"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_vtimezone_describes_the_zones_yearly_changes() {
+        let paris = vtimezone("Europe/Paris", 2026).expect("Paris");
+        assert!(paris.starts_with("BEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\n"));
+        assert!(paris.ends_with("END:VTIMEZONE\r\n"));
+        let daylight = "BEGIN:DAYLIGHT\r\nDTSTART:20260329T020000\r\n\
+                        RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\n\
+                        TZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\n\
+                        END:DAYLIGHT\r\n";
+        let standard = "BEGIN:STANDARD\r\nDTSTART:20261025T030000\r\n\
+                        RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\n\
+                        TZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\n\
+                        END:STANDARD\r\n";
+        assert!(paris.contains(daylight), "{paris}");
+        assert!(paris.contains(standard), "{paris}");
+
+        // No daylight saving: one observance.
+        let tokyo = vtimezone("Asia/Tokyo", 2026).expect("Tokyo");
+        assert!(
+            tokyo.contains(
+                "BEGIN:STANDARD\r\nDTSTART:19700101T000000\r\n\
+             TZOFFSETFROM:+0900\r\nTZOFFSETTO:+0900\r\nTZNAME:JST\r\nEND:STANDARD\r\n"
+            ),
+            "{tokyo}"
+        );
+        assert!(!tokyo.contains("DAYLIGHT"));
+        assert_eq!(vtimezone("Mars/Olympus", 2026), None);
+    }
+
+    #[test]
+    fn an_occurrence_keeps_its_series_length() {
+        let series = timed("2026-10-19T07:00:00Z", "2026-10-19T07:45:00Z");
+        assert_eq!(
+            occurrence_when(&series, RecurrenceId::Instant(at("2026-10-26T08:00:00Z"))),
+            timed("2026-10-26T08:00:00Z", "2026-10-26T08:45:00Z")
+        );
+        let all_day = When::AllDay {
+            start: day(2026, 10, 7),
+            end: day(2026, 10, 9),
+        };
+        assert_eq!(
+            occurrence_when(&all_day, RecurrenceId::Date(day(2027, 10, 7))),
+            When::AllDay {
+                start: day(2027, 10, 7),
+                end: day(2027, 10, 9)
+            }
+        );
     }
 }

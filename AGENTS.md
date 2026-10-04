@@ -68,8 +68,9 @@ Web interface only for now. The core is open source under **AGPLv3**.
 - **Calendar:** recurring events are stored as an RFC 5545 rule plus its exceptions and unfolded on
   demand (`apps/api/src/calendar/`). Crates: `rrule` (community project of an independent
   maintainer, Fredrik Meringdal; MIT/Apache-2.0), `icalendar` (Hendrik Sollich, Dresden, Germany;
-  MIT/Apache-2.0), `chrono` and `chrono-tz` (community chronotope project; MIT/Apache-2.0). `chrono`
-  is what `rrule` speaks and does not leave the calendar module: the rest of the API uses `time`.
+  MIT/Apache-2.0; its `parser` feature brings `nom-language`, by `nom`'s author Geoffroy Couprie,
+  France, MIT), `chrono` and `chrono-tz` (community chronotope project; MIT/Apache-2.0). `chrono` is
+  what `rrule` speaks and does not leave the calendar module: the rest of the API uses `time`.
 - **Containerization:** Docker + `docker compose` (all-in-one deployment).
 
 ## Pinned versions

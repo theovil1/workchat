@@ -933,3 +933,263 @@ async fn a_member_without_write_access_can_still_set_their_reminder() {
         .expect("bad delay");
     assert_eq!(off_day.status(), 422);
 }
+
+// --- iCal subscriptions ---------------------------------------------------------------------------
+
+/// Ask for a subscription address; returns (feed id, path to fetch it without a session).
+async fn subscribe(app: &TestApp, cookie: &str, calendar_id: Value) -> (Value, String) {
+    let created = app
+        .req(reqwest::Method::POST, "/api/v1/calendar/feeds", cookie)
+        .json(&json!({ "calendar_id": calendar_id }))
+        .send()
+        .await
+        .expect("create feed");
+    assert_eq!(created.status(), 201);
+    let feed: Value = created.json().await.expect("json");
+    let url = feed["url"].as_str().expect("url").to_owned();
+    let path = url[url.find("/api/v1/public/ical/").expect("feed path")..].to_owned();
+    assert!(path.ends_with(".ics"));
+    (feed["id"].clone(), path)
+}
+
+/// Fetch a feed the way a phone does: no cookie. Returns the status and the unfolded text.
+async fn fetch_feed(app: &TestApp, path: &str) -> (u16, String) {
+    let response = app
+        .http
+        .get(format!("{}{}", app.base, path))
+        .send()
+        .await
+        .expect("fetch feed");
+    let status = response.status().as_u16();
+    if status == 200 {
+        assert_eq!(
+            response.headers()["content-type"],
+            "text/calendar; charset=utf-8"
+        );
+    }
+    let text = response.text().await.expect("text");
+    (status, text.replace("\r\n ", "").replace("\r\n\t", ""))
+}
+
+#[tokio::test]
+async fn feed_keeps_tzid_and_local_time() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let mut meeting = weekly_meeting("Point équipe; salle 2, étage");
+    meeting["location"] = json!("Salle Ouest");
+    let event: Value = create_event(&app, &alice, &general["id"], meeting)
+        .await
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        remove(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-10-26T08:00:00Z"
+        )
+        .await,
+        204
+    );
+    let mut moved = weekly_meeting("Point déplacé");
+    moved["start"] = json!("2026-11-02T14:00:00Z");
+    moved["end"] = json!("2026-11-02T14:45:00Z");
+    assert_eq!(
+        edit(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-11-02T08:00:00Z",
+            moved
+        )
+        .await
+        .status(),
+        200
+    );
+
+    let (_, path) = subscribe(&app, &alice, general["id"].clone()).await;
+    let (status, text) = fetch_feed(&app, &path).await;
+    assert_eq!(status, 200);
+    let calendar = icalendar::parser::read_calendar(&text).expect("a calendar the parser reads");
+    let kinds: Vec<String> = calendar
+        .components
+        .iter()
+        .map(|c| c.name.to_string())
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|k| k.as_str() == "VEVENT").count(),
+        2,
+        "{text}"
+    );
+    assert!(kinds.iter().any(|k| k == "VTIMEZONE"), "{text}");
+    for line in [
+        "BEGIN:VCALENDAR",
+        "TZID:Europe/Paris",
+        "BEGIN:DAYLIGHT",
+        "DTSTART;TZID=Europe/Paris:20261019T090000",
+        "DTEND;TZID=Europe/Paris:20261019T094500",
+        "RRULE:FREQ=WEEKLY;BYDAY=MO",
+        "EXDATE;TZID=Europe/Paris:20261026T090000",
+        "RECURRENCE-ID;TZID=Europe/Paris:20261102T090000",
+        "DTSTART;TZID=Europe/Paris:20261102T150000",
+        "SUMMARY:Point déplacé",
+        r"SUMMARY:Point équipe\; salle 2\, étage",
+        "LOCATION:Salle Ouest",
+        &format!("UID:{}@ruchoir", event["event_id"].as_str().unwrap()),
+        &format!("X-WR-CALNAME:{}", general["name"].as_str().unwrap()),
+        "X-APPLE-CALENDAR-COLOR:#6fe0c2",
+    ] {
+        assert!(
+            text.lines().any(|l| l == line),
+            "missing {line:?} in:\n{text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_all_feed_mixes_every_visible_calendar() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let other: Value = app
+        .req(reqwest::Method::POST, "/api/v1/spaces", &alice)
+        .json(&json!({ "name": format!("Autre {}", Uuid::new_v4().simple()) }))
+        .send()
+        .await
+        .expect("space")
+        .json()
+        .await
+        .expect("json");
+    let calendars = calendars_of(&app, &alice).await;
+    let personal = calendars
+        .iter()
+        .find(|c| c["space_id"].is_null())
+        .expect("personal");
+    let other_general = calendars
+        .iter()
+        .find(|c| c["space_id"] == other["id"])
+        .expect("other space");
+    for (calendar, title) in [
+        (&general, "Dans l'espace"),
+        (personal, "Chez moi"),
+        (other_general, "Ailleurs"),
+    ] {
+        assert_eq!(
+            create_event(&app, &alice, &calendar["id"], weekly_meeting(title))
+                .await
+                .status(),
+            201
+        );
+    }
+    let (_, path) = subscribe(&app, &alice, Value::Null).await;
+    let (status, text) = fetch_feed(&app, &path).await;
+    assert_eq!(status, 200);
+    for title in ["Dans l'espace", "Chez moi", "Ailleurs"] {
+        assert!(
+            text.lines().any(|l| l == format!("SUMMARY:{title}")),
+            "missing {title} in:\n{text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_revoked_feed_answers_404() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let (id, path) = subscribe(&app, &alice, general["id"].clone()).await;
+    assert_eq!(fetch_feed(&app, &path).await.0, 200);
+    let revoked = app
+        .req(
+            reqwest::Method::DELETE,
+            &format!("/api/v1/calendar/feeds/{}", id.as_str().unwrap()),
+            &alice,
+        )
+        .send()
+        .await
+        .expect("revoke");
+    assert_eq!(revoked.status(), 204);
+    assert_eq!(fetch_feed(&app, &path).await.0, 404);
+    // Nonsense answers the same.
+    assert_eq!(
+        fetch_feed(&app, "/api/v1/public/ical/not-a-token.ics")
+            .await
+            .0,
+        404
+    );
+    // And someone else cannot revoke what is not theirs.
+    let (bob_feed, _) = subscribe(&app, &app.cookie_for(fx.bob).await, Value::Null).await;
+    let foreign = app
+        .req(
+            reqwest::Method::DELETE,
+            &format!("/api/v1/calendar/feeds/{}", bob_feed.as_str().unwrap()),
+            &alice,
+        )
+        .send()
+        .await
+        .expect("foreign revoke");
+    assert_eq!(foreign.status(), 404);
+}
+
+#[tokio::test]
+async fn a_feed_stops_when_its_owner_leaves_the_space() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    create_event(
+        &app,
+        &alice,
+        &general["id"],
+        weekly_meeting("Réunion d'équipe"),
+    )
+    .await;
+    let (_, one) = subscribe(&app, &bob, general["id"].clone()).await;
+    let (_, all) = subscribe(&app, &bob, Value::Null).await;
+    assert!(fetch_feed(&app, &all).await.1.contains("Réunion d'équipe"));
+
+    app.req(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/spaces/{}/membership", fx.space_id),
+        &bob,
+    )
+    .send()
+    .await
+    .expect("leave");
+    assert_eq!(fetch_feed(&app, &one).await.0, 404);
+    let (status, text) = fetch_feed(&app, &all).await;
+    assert_eq!(status, 200);
+    assert!(!text.contains("Réunion d'équipe"));
+}
+
+#[tokio::test]
+async fn a_feed_token_is_never_listed_again() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let (id, path) = subscribe(&app, &alice, general["id"].clone()).await;
+    fetch_feed(&app, &path).await;
+    let listed: Vec<Value> = app
+        .req(reqwest::Method::GET, "/api/v1/calendar/feeds", &alice)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    let mine = listed.iter().find(|f| f["id"] == id).expect("listed");
+    assert_eq!(mine["calendar_id"], general["id"]);
+    assert!(mine["created_at"].is_string());
+    assert!(mine["last_used_at"].is_string());
+    let token = &path["/api/v1/public/ical/".len()..path.len() - ".ics".len()];
+    let raw = serde_json::to_string(&listed).unwrap();
+    assert!(!raw.contains(token));
+    assert!(mine.get("url").is_none());
+}

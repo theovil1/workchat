@@ -11,6 +11,8 @@ pub(crate) mod calendars;
 pub(crate) mod dto;
 pub(crate) mod error;
 pub(crate) mod events;
+pub(crate) mod feeds;
+pub(crate) mod ics;
 pub(crate) mod occurrences;
 #[allow(dead_code)]
 pub(crate) mod recurrence;

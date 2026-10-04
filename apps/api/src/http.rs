@@ -266,7 +266,10 @@ pub fn router(state: AppState) -> Router {
             .expect("valid rate-limit configuration"),
     );
     let public_links =
-        crate::files::links::public_router().layer(GovernorLayer::new(links_governor));
+        crate::files::links::public_router().layer(GovernorLayer::new(links_governor.clone()));
+    // Calendar subscriptions answer without a session too: a guessed token is limited the same way.
+    let public_feeds =
+        crate::calendar::feeds::public_router().layer(GovernorLayer::new(links_governor));
 
     let mut router = Router::new()
         .route("/healthz", get(healthz))
@@ -275,6 +278,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/openapi.json", get(crate::openapi::openapi_json))
         .nest("/api/v1/auth", auth_routes)
         .merge(public_links)
+        .merge(public_feeds)
         // The messaging REST surface and the real-time transport use absolute `/api/v1/...` paths
         // and merge in here. Both are guarded per request by the `AuthSession` extractor, so no
         // blanket auth layer is needed. Merging (not a second `/api/v1` nest) avoids path overlap

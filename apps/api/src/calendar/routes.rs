@@ -5,7 +5,7 @@ use axum::Router;
 
 use crate::state::AppState;
 
-use super::{calendars, events, occurrences};
+use super::{calendars, events, feeds, occurrences};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -40,4 +40,12 @@ pub fn router() -> Router<AppState> {
                 .delete(events::delete_event),
         )
         .route("/api/v1/events/{event_id}/me", put(events::put_event_me))
+        .route(
+            "/api/v1/calendar/feeds",
+            get(feeds::list_feeds).post(feeds::create_feed),
+        )
+        .route(
+            "/api/v1/calendar/feeds/{feed_id}",
+            axum::routing::delete(feeds::revoke_feed),
+        )
 }
