@@ -456,13 +456,17 @@ pub struct UpdateProfileRequest {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct NotificationDto {
     pub id: Uuid,
-    /// `mention`, `reply` or `dm`.
+    /// `mention`, `broadcast`, `reply`, `dm`, `message`, or `calendar_reminder`.
     pub kind: String,
-    pub conversation_id: Uuid,
-    /// The space the conversation belongs to. Carried so the inbox can be shown for the space on
-    /// screen: without it a client holding one space cannot tell which of its notifications belong
-    /// there, and would show a mention from another space in every space it opens.
-    pub space_id: Uuid,
+    /// The conversation a message notification is about; absent for a reminder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<Uuid>,
+    /// The space it happened in. Carried so the inbox can be shown for the space on screen: without
+    /// it a client holding one space cannot tell which of its notifications belong there, and would
+    /// show a mention from another space in every space it opens. Absent for a reminder from a
+    /// personal calendar, which belongs to every space.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<Uuid>,
     /// The channel's name, absent for a direct message.
     ///
     /// Carried because a notification routinely arrives for a space the client has not loaded, and
@@ -471,18 +475,36 @@ pub struct NotificationDto {
     /// came from anywhere but the space on screen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
-    /// The space's name, for the same reason: a notification says where it happened.
+    /// The space's name, for the same reason: a notification says where it happened. Empty for a
+    /// reminder from a personal calendar.
     pub space_name: String,
-    pub message_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_name: Option<String>,
-    /// A short plain-text excerpt of the source message.
+    /// A short plain-text excerpt of the source message; empty for a reminder.
     pub preview: String,
     pub created_at: String,
     /// Whether the caller has read the notification.
     pub read: bool,
+    /// A reminder's event and occurrence: what it is about and when it starts (RFC 3339 in UTC for
+    /// a timed event, `YYYY-MM-DD` for an all-day one).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recurrence_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_all_day: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_location: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calendar_name: Option<String>,
 }
 
 /// A page of notifications, newest first, with the caller's total unread count.

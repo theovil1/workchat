@@ -214,6 +214,42 @@ pub fn occurrence_when(series: &When, id: RecurrenceId) -> When {
     shifted(series, recurrence_instant(&id))
 }
 
+/// When `date` starts on the wall clock of `tzid`; `None` for an unknown zone.
+pub fn local_midnight(date: Date, tzid: &str) -> Option<OffsetDateTime> {
+    use chrono::TimeZone as _;
+    let tz = tzid.parse::<chrono_tz::Tz>().ok()?;
+    let naive = chrono::NaiveDate::from_ymd_opt(
+        date.year(),
+        u32::from(u8::from(date.month())),
+        u32::from(date.day()),
+    )?
+    .and_hms_opt(0, 0, 0)?;
+    // A zone that skips midnight on that day starts it at the first instant that exists.
+    let local = tz.from_local_datetime(&naive).earliest().or_else(|| {
+        tz.from_local_datetime(&(naive + chrono::Duration::hours(1)))
+            .earliest()
+    })?;
+    Some(from_chrono(&local))
+}
+
+/// The local date, hour and minute of an instant in `tzid`; `None` for an unknown zone.
+pub fn local_parts(instant: OffsetDateTime, tzid: &str) -> Option<(Date, u8, u8)> {
+    use chrono::{Datelike, Timelike};
+    let tz = tzid.parse::<chrono_tz::Tz>().ok()?;
+    let local = to_chrono(instant).with_timezone(&tz);
+    let date = Date::from_calendar_date(
+        local.year(),
+        time::Month::try_from(u8::try_from(local.month()).ok()?).ok()?,
+        u8::try_from(local.day()).ok()?,
+    )
+    .ok()?;
+    Some((
+        date,
+        u8::try_from(local.hour()).ok()?,
+        u8::try_from(local.minute()).ok()?,
+    ))
+}
+
 /// An occurrence cancelled or moved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExceptionInput {
@@ -247,6 +283,8 @@ pub struct Occurrence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleOrigin {
     Ui,
+    /// A rule read from an imported calendar; the importer of `.ics` files is the next step.
+    #[cfg_attr(not(test), allow(dead_code))]
     Import,
 }
 
@@ -1199,6 +1237,27 @@ mod tests {
                 start: day(2027, 10, 7),
                 end: day(2027, 10, 9)
             }
+        );
+    }
+
+    #[test]
+    fn local_midnight_and_parts_follow_the_zone() {
+        assert_eq!(
+            local_midnight(day(2026, 10, 7), "Europe/Paris"),
+            Some(at("2026-10-06T22:00:00Z"))
+        );
+        assert_eq!(
+            local_midnight(day(2026, 12, 7), "Europe/Paris"),
+            Some(at("2026-12-06T23:00:00Z"))
+        );
+        assert_eq!(local_midnight(day(2026, 12, 7), "Mars/Olympus"), None);
+        assert_eq!(
+            local_parts(at("2026-10-26T08:05:00Z"), "Europe/Paris"),
+            Some((day(2026, 10, 26), 9, 5))
+        );
+        assert_eq!(
+            local_parts(at("2026-10-26T23:30:00Z"), "Europe/Paris"),
+            Some((day(2026, 10, 27), 0, 30))
         );
     }
 }

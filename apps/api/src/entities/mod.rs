@@ -24,23 +24,13 @@ pub mod file_stars;
 pub mod file_versions;
 pub mod files;
 
-// The calendar. Allowed unused until the calendar routes read every table; the attributes go
-// with that change.
-#[allow(dead_code)]
+// The calendar.
 pub mod calendar_event_exceptions;
-#[allow(dead_code)]
 pub mod calendar_event_reminders;
-#[allow(dead_code)]
 pub mod calendar_events;
-#[allow(dead_code)]
 pub mod calendar_feed_tokens;
-#[allow(dead_code)]
-pub mod calendar_reminder_deliveries;
-#[allow(dead_code)]
 pub mod calendar_reminder_prefs;
-#[allow(dead_code)]
 pub mod calendar_visibility;
-#[allow(dead_code)]
 pub mod calendars;
 
 // Messaging.

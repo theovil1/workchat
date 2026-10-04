@@ -135,8 +135,15 @@ pub async fn hydrate<C: ConnectionTrait>(
     db: &C,
     rows: Vec<notifications::Model>,
 ) -> Result<Vec<NotificationDto>, ApiError> {
-    // Only notifications about a message are drawn here; a calendar reminder has neither a
-    // conversation nor a message.
+    // Calendar reminders are drawn by the calendar, which knows their events; the rest are about a
+    // message. Both come back in the order they were asked for.
+    let order: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let (reminder_rows, rows): (Vec<_>, Vec<_>) = rows
+        .into_iter()
+        .partition(|r| r.kind == "calendar_reminder");
+    let mut drawn = crate::calendar::reminders::hydrate(db, reminder_rows)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     let rows: Vec<(notifications::Model, Uuid, Uuid)> = rows
         .into_iter()
         .filter_map(|r| {
@@ -145,7 +152,7 @@ pub async fn hydrate<C: ConnectionTrait>(
         })
         .collect();
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok(in_order(drawn, &order));
     }
 
     let message_ids: Vec<Uuid> = rows.iter().map(|(_, _, m)| *m).collect();
@@ -178,9 +185,8 @@ pub async fn hydrate<C: ConnectionTrait>(
             .collect()
     };
 
-    Ok(rows
-        .into_iter()
-        .map(|(r, conversation_id, message_id)| NotificationDto {
+    drawn.extend(rows.into_iter().map(|(r, conversation_id, message_id)| {
+        NotificationDto {
             preview: bodies
                 .get(&message_id)
                 .map(|b| preview(b))
@@ -190,10 +196,7 @@ pub async fn hydrate<C: ConnectionTrait>(
             created_at: rfc3339(r.created_at),
             id: r.id,
             kind: r.kind,
-            space_id: labels
-                .get(&conversation_id)
-                .map(|l| l.space_id)
-                .unwrap_or_default(),
+            space_id: labels.get(&conversation_id).map(|l| l.space_id),
             channel_name: labels
                 .get(&conversation_id)
                 .and_then(|l| l.channel_name.clone()),
@@ -201,11 +204,26 @@ pub async fn hydrate<C: ConnectionTrait>(
                 .get(&conversation_id)
                 .map(|l| l.space_name.clone())
                 .unwrap_or_default(),
-            conversation_id,
-            message_id,
+            conversation_id: Some(conversation_id),
+            message_id: Some(message_id),
             actor_id: r.actor_id,
-        })
-        .collect())
+            event_id: None,
+            recurrence_id: None,
+            event_title: None,
+            event_start: None,
+            event_all_day: None,
+            event_location: None,
+            calendar_name: None,
+        }
+    }));
+    Ok(in_order(drawn, &order))
+}
+
+/// Put drawn notifications back in the order their rows came in.
+fn in_order(mut drawn: Vec<NotificationDto>, order: &[Uuid]) -> Vec<NotificationDto> {
+    let position: HashMap<Uuid, usize> = order.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    drawn.sort_by_key(|dto| position.get(&dto.id).copied().unwrap_or(usize::MAX));
+    drawn
 }
 
 /// Query for the notification feed.

@@ -1193,3 +1193,291 @@ async fn a_feed_token_is_never_listed_again() {
     assert!(!raw.contains(token));
     assert!(mine.get("url").is_none());
 }
+
+// --- Reminders ------------------------------------------------------------------------------------
+
+/// A Wednesday morning in 2031, one per test (`day` of March), so two tests running at once never
+/// sweep each other's reminders.
+fn sweep_moment(day: u8) -> OffsetDateTime {
+    OffsetDateTime::parse(
+        &format!("2031-03-{day:02}T10:00:00Z"),
+        &time::format_description::well_known::Rfc3339,
+    )
+    .expect("moment")
+}
+
+fn rfc(instant: OffsetDateTime) -> String {
+    instant
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("format")
+}
+
+/// A one-off event starting `minutes` after `now`, in the space's general calendar.
+async fn event_in(
+    app: &TestApp,
+    cookie: &str,
+    calendar_id: &Value,
+    title: &str,
+    now: OffsetDateTime,
+    minutes: i64,
+) -> Value {
+    let start = now + time::Duration::minutes(minutes);
+    let created = create_event(
+        app,
+        cookie,
+        calendar_id,
+        json!({ "title": title, "all_day": false, "start": rfc(start),
+                "end": rfc(start + time::Duration::minutes(30)), "tzid": "Europe/Paris" }),
+    )
+    .await;
+    assert_eq!(created.status(), 201);
+    created.json().await.expect("json")
+}
+
+/// Who a sweep reminded of `event`.
+fn reminded(report: &crate::calendar::reminders::SweepReport, event: &Value) -> Vec<Uuid> {
+    let id: Uuid = event["event_id"].as_str().unwrap().parse().unwrap();
+    let mut people: Vec<Uuid> = report
+        .notified
+        .iter()
+        .filter(|(_, e, _)| *e == id)
+        .map(|(u, _, _)| *u)
+        .collect();
+    people.sort();
+    people
+}
+
+fn sorted(mut people: Vec<Uuid>) -> Vec<Uuid> {
+    people.sort();
+    people
+}
+
+#[tokio::test]
+async fn space_members_get_the_calendar_default_reminder() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(3);
+    // Starts in ten minutes: the default reminder is due now.
+    let event = event_in(&app, &alice, &general["id"], "Revue client", now, 10).await;
+    // Starts in an hour: not yet.
+    let later = event_in(&app, &alice, &general["id"], "Plus tard", now, 60).await;
+
+    let report = crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    assert_eq!(
+        reminded(&report, &event),
+        sorted(vec![fx.alice, fx.bob, fx.carol])
+    );
+    assert!(reminded(&report, &later).is_empty());
+
+    let inbox: Value = app
+        .req(reqwest::Method::GET, "/api/v1/notifications", &bob)
+        .send()
+        .await
+        .expect("inbox")
+        .json()
+        .await
+        .expect("json");
+    let reminder = inbox["notifications"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["event_id"] == event["event_id"])
+        .expect("the reminder is in bob's inbox");
+    assert_eq!(reminder["kind"], "calendar_reminder");
+    assert_eq!(reminder["event_title"], "Revue client");
+    assert_eq!(
+        reminder["event_start"],
+        rfc(now + time::Duration::minutes(10))
+    );
+    assert_eq!(reminder["event_all_day"], false);
+    assert_eq!(reminder["space_id"], fx.space_id.to_string());
+    assert_eq!(reminder["read"], false);
+}
+
+#[tokio::test]
+async fn muting_a_calendar_or_an_event_stops_it() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(4);
+    let event = event_in(&app, &alice, &general["id"], "Point", now, 10).await;
+    app.req(
+        reqwest::Method::PUT,
+        &format!("/api/v1/calendars/{}/me", general["id"].as_str().unwrap()),
+        &app.cookie_for(fx.bob).await,
+    )
+    .json(&json!({ "reminder_minutes": null }))
+    .send()
+    .await
+    .expect("mute calendar");
+    app.req(
+        reqwest::Method::PUT,
+        &format!("/api/v1/events/{}/me", event["event_id"].as_str().unwrap()),
+        &app.cookie_for(fx.carol).await,
+    )
+    .json(&json!({ "reminder_minutes": null }))
+    .send()
+    .await
+    .expect("mute event");
+
+    let report = crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    assert_eq!(reminded(&report, &event), vec![fx.alice]);
+}
+
+#[tokio::test]
+async fn two_sweeps_send_one_reminder() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let personal = calendars_of(&app, &alice)
+        .await
+        .into_iter()
+        .find(|c| c["space_id"].is_null())
+        .expect("personal");
+    let now = sweep_moment(5);
+    let event = event_in(&app, &alice, &personal["id"], "Dentiste", now, 10).await;
+
+    let (first, second) = tokio::join!(
+        crate::calendar::reminders::sweep(&app.state, now),
+        crate::calendar::reminders::sweep(&app.state, now)
+    );
+    let together = reminded(&first.expect("first"), &event).len()
+        + reminded(&second.expect("second"), &event).len();
+    assert_eq!(together, 1);
+    let again = crate::calendar::reminders::sweep(&app.state, now + time::Duration::minutes(1))
+        .await
+        .expect("third");
+    assert!(reminded(&again, &event).is_empty());
+    let rows = notifications::Entity::find()
+        .filter(notifications::Column::UserId.eq(fx.alice))
+        .filter(
+            notifications::Column::EventId.eq(event["event_id"]
+                .as_str()
+                .unwrap()
+                .parse::<Uuid>()
+                .unwrap()),
+        )
+        .all(&app.db)
+        .await
+        .expect("rows");
+    assert_eq!(rows.len(), 1);
+    // The reminder's own mail was decided when it was made: the unread digest never takes it.
+    assert!(rows[0].email_handled_at.is_some());
+}
+
+#[tokio::test]
+async fn a_late_reminder_is_dropped() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(6);
+    let event = event_in(&app, &alice, &general["id"], "Rattrapé", now, 10).await;
+    // The server was down: the first sweep runs sixteen minutes after the reminder was due.
+    let report = crate::calendar::reminders::sweep(&app.state, now + time::Duration::minutes(16))
+        .await
+        .expect("sweep");
+    assert!(reminded(&report, &event).is_empty());
+    // Fifteen minutes late is still on time.
+    let report = crate::calendar::reminders::sweep(&app.state, now + time::Duration::minutes(15))
+        .await
+        .expect("sweep");
+    assert_eq!(reminded(&report, &event).len(), 3);
+}
+
+#[tokio::test]
+async fn a_former_member_gets_no_reminder() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(7);
+    let event = event_in(&app, &alice, &general["id"], "Sans Bob", now, 10).await;
+    app.req(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/spaces/{}/membership", fx.space_id),
+        &app.cookie_for(fx.bob).await,
+    )
+    .send()
+    .await
+    .expect("leave");
+    let report = crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    assert_eq!(reminded(&report, &event), sorted(vec![fx.alice, fx.carol]));
+}
+
+#[tokio::test]
+async fn an_all_day_reminder_comes_the_evening_before() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    // 2031-03-11 in Paris starts at 2031-03-10T23:00Z; 17:00 the evening before is 16:00Z.
+    let created = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        json!({ "title": "Congé", "all_day": true, "start": "2031-03-11", "end": "2031-03-12",
+                "reminder_minutes": 420 }),
+    )
+    .await;
+    assert_eq!(created.status(), 201);
+    let event: Value = created.json().await.expect("json");
+    let evening = OffsetDateTime::parse(
+        "2031-03-10T16:00:00Z",
+        &time::format_description::well_known::Rfc3339,
+    )
+    .unwrap();
+    let early = crate::calendar::reminders::sweep(&app.state, evening - time::Duration::minutes(1))
+        .await
+        .expect("sweep");
+    assert!(reminded(&early, &event).is_empty());
+    let report = crate::calendar::reminders::sweep(&app.state, evening)
+        .await
+        .expect("sweep");
+    // Only who asked: an all-day event takes no calendar default.
+    assert_eq!(reminded(&report, &event), vec![fx.alice]);
+}
+
+#[tokio::test]
+async fn no_mail_when_connected_or_turned_off() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let carol = app.cookie_for(fx.carol).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(12);
+    let event = event_in(&app, &alice, &general["id"], "Par mail", now, 10).await;
+    // Bob turns reminder mail off; Carol has Ruchoir open.
+    let saved = app
+        .req(
+            reqwest::Method::PUT,
+            "/api/v1/me/notification-preferences",
+            &bob,
+        )
+        .json(&json!({ "email_calendar_reminders": false }))
+        .send()
+        .await
+        .expect("prefs");
+    assert!(saved.status().is_success());
+    let _carol_ws = app.connect_ws(&carol).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let report = crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    assert_eq!(reminded(&report, &event).len(), 3);
+    assert!(report.mailed.contains(&fx.alice));
+    assert!(!report.mailed.contains(&fx.bob));
+    assert!(!report.mailed.contains(&fx.carol));
+}
