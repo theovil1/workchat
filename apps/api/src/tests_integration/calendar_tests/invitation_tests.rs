@@ -712,6 +712,24 @@ async fn freebusy_hides_titles_and_strangers() {
         ]
     );
 
+    // The event being edited does not keep anyone busy while it is being moved.
+    let revue: Value = occurrences(&app, &bob, "2026-10-20T00:00:00Z", "2026-10-21T00:00:00Z")
+        .await
+        .into_iter()
+        .find(|o| o["title"] == "Revue")
+        .expect("the review");
+    let without: Value = app
+        .req(reqwest::Method::POST, "/api/v1/calendar/freebusy", &alice)
+        .json(&json!({ "users": [fx.bob], "from": "2026-10-20T00:00:00Z", "to": "2026-10-21T00:00:00Z",
+                       "exclude_event": revue["event_id"] }))
+        .send()
+        .await
+        .expect("freebusy")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(without[0]["busy"].as_array().unwrap().len(), 1);
+
     // Someone sharing no space with the caller is not anyone's business.
     assert_eq!(freebusy(&app, &alice, json!([dave])).await.status(), 403);
 }

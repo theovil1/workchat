@@ -42,6 +42,8 @@ pub struct FreeBusyQuery {
     pub from: String,
     /// RFC 3339, exclusive.
     pub to: String,
+    /// An event to leave out: the one being moved, which should not stand in its own way.
+    pub exclude_event: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -74,12 +76,13 @@ pub fn merge(
     merged
 }
 
-/// When `person` is busy within `[from, to)`.
+/// When `person` is busy within `[from, to)`, leaving `exclude` out.
 pub async fn busy_of<C: ConnectionTrait>(
     db: &C,
     person: Uuid,
     from: OffsetDateTime,
     to: OffsetDateTime,
+    exclude: Option<Uuid>,
 ) -> Result<Vec<(OffsetDateTime, OffsetDateTime)>, CalendarError> {
     let own_calendars: Vec<Uuid> = calendars::Entity::find()
         .filter(calendars::Column::OwnerUserId.eq(person))
@@ -165,7 +168,7 @@ pub async fn busy_of<C: ConnectionTrait>(
     }
 
     let mut busy = Vec::new();
-    for event in &events {
+    for event in events.iter().filter(|e| Some(e.id) != exclude) {
         let rows = by_event.remove(&event.id).unwrap_or_default();
         let inputs = exception_inputs(&rows);
         for occurrence in recurrence::expand(&series_of(event, &inputs), from, to)? {
@@ -253,7 +256,7 @@ pub async fn free_busy(
     }
     let mut found = Vec::with_capacity(people.len());
     for person in people {
-        let busy = busy_of(&state.db, person, from, to).await?;
+        let busy = busy_of(&state.db, person, from, to, query.exclude_event).await?;
         found.push(FreeBusyDto {
             user_id: person,
             busy: busy
