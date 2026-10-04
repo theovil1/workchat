@@ -1156,7 +1156,9 @@ pub async fn respond(
         }
     };
     attendees::answer(&state.db, &row, &body.status, date.as_ref()).await?;
-    if body.status == attendees::DECLINED {
+    // A refusal tells the organiser once, not at every click on the same answer.
+    let again = date.is_none() && row.status == attendees::DECLINED;
+    if body.status == attendees::DECLINED && !again {
         invitations::send(
             &state,
             Some(&event),

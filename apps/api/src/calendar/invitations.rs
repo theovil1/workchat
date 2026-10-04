@@ -431,7 +431,9 @@ async fn tell_members(
             && prefs::allows(kind, &user_prefs, None, Delivery::Email)
             && prefs::may_interrupt(&user_prefs, reader.manual_presence.as_deref(), now)
         {
-            mail_member(state, reader, &dto).await;
+            // In the background: a relay that answers slowly must not hold up the change.
+            let (state, reader, dto) = (state.clone(), reader.clone(), dto.clone());
+            tokio::spawn(async move { mail_member(&state, &reader, &dto).await });
         }
     }
     Ok(())
@@ -530,9 +532,12 @@ async fn mail_outside(
             method,
             body: body.clone(),
         });
-        if let Err(error) = state.mailer.send(address, &email).await {
-            tracing::warn!(%error, "could not send a calendar invitation by mail");
-        }
+        let (state, address) = (state.clone(), address.to_owned());
+        tokio::spawn(async move {
+            if let Err(error) = state.mailer.send(&address, &email).await {
+                tracing::warn!(%error, "could not send a calendar invitation by mail");
+            }
+        });
     }
     Ok(())
 }
