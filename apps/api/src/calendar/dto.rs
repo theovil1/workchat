@@ -110,3 +110,102 @@ pub struct CalendarMe {
 pub struct DeleteCalendar {
     pub confirm_name: String,
 }
+
+/// An event as the form sends it, for a new event or a change.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct EventInput {
+    pub title: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub all_day: bool,
+    /// RFC 3339 for a timed event, `YYYY-MM-DD` for an all-day one.
+    pub start: String,
+    /// Same form as `start`; exclusive for an all-day event (one day on the 7th ends on the 8th).
+    pub end: String,
+    /// IANA time zone of a timed event; the author's profile one when absent.
+    pub tzid: Option<String>,
+    /// A bare RFC 5545 rule, `FREQ=...`; absent or null for a one-off event.
+    pub rrule: Option<String>,
+    /// The author's own reminder for this event: absent leaves it, `null` turns it off.
+    #[serde(default, deserialize_with = "absent_null_or")]
+    #[schema(value_type = Option<i32>)]
+    pub reminder_minutes: Option<Option<i32>>,
+    /// Another calendar to move the event to (whole-series changes only).
+    pub calendar_id: Option<Uuid>,
+}
+
+/// One occurrence, ready to draw.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct OccurrenceDto {
+    pub event_id: Uuid,
+    pub calendar_id: Uuid,
+    /// Which occurrence of a series this is (its original start); absent for a one-off event.
+    pub recurrence_id: Option<String>,
+    pub title: String,
+    pub location: Option<String>,
+    pub all_day: bool,
+    /// RFC 3339 in UTC for a timed occurrence, `YYYY-MM-DD` for an all-day one.
+    pub start: String,
+    pub end: String,
+    pub tzid: Option<String>,
+    pub is_recurring: bool,
+    /// Whether this occurrence was changed apart from its series.
+    pub overridden: bool,
+    pub can_edit: bool,
+    /// The reminder the viewer gets for it, in minutes; absent when none.
+    pub my_reminder_minutes: Option<i32>,
+}
+
+/// An event (or a series' head) with everything the form needs.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EventDto {
+    #[serde(flatten)]
+    pub head: OccurrenceDto,
+    pub description: Option<String>,
+    pub rrule: Option<String>,
+    pub created_by: Option<Uuid>,
+    /// RFC 3339.
+    pub updated_at: String,
+}
+
+/// Which part of a series a change or a deletion touches.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum EditScope {
+    /// The one occurrence named by `recurrence_id`.
+    This,
+    /// That occurrence and every later one.
+    Following,
+    /// The whole series.
+    #[default]
+    All,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EditQuery {
+    #[serde(default)]
+    pub scope: EditScope,
+    pub recurrence_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OccurrencesQuery {
+    /// RFC 3339.
+    pub from: String,
+    /// RFC 3339, exclusive.
+    pub to: String,
+    /// Comma-separated calendar ids; every visible calendar when absent.
+    pub calendars: Option<String>,
+}
+
+/// The viewer's own reminder for one event (its whole series).
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct EventMe {
+    /// A number of minutes, or `null` for no reminder.
+    #[serde(default, deserialize_with = "absent_null_or")]
+    #[schema(value_type = Option<i32>)]
+    pub reminder_minutes: Option<Option<i32>>,
+    /// `true` drops the viewer's choice for this event and follows their calendar setting again.
+    #[serde(default)]
+    pub reminder_default: bool,
+}

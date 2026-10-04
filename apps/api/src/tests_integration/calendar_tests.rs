@@ -346,19 +346,27 @@ async fn leaving_a_space_hides_its_calendars() {
     assert_eq!(gone.status(), 404);
 }
 
-/// Wait for a `calendar.changed` event, or `None` within a short window.
-async fn calendar_change(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Option<Value> {
-    let deadline = Duration::from_millis(800);
-    while let Ok(Some(Ok(WsMessage::Text(text)))) = tokio::time::timeout(deadline, ws.next()).await
-    {
-        let Ok(event) = serde_json::from_str::<Value>(text.as_str()) else {
-            continue;
-        };
-        if event["type"] == "calendar.changed" {
-            return Some(event);
+/// Wait for a `calendar.changed` event, or `None` once `window` has passed. Every other frame
+/// (presence, pings) is skipped.
+async fn calendar_change(
+    ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+    window: Duration,
+) -> Option<Value> {
+    let deadline = tokio::time::Instant::now() + window;
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match tokio::time::timeout(left, ws.next()).await {
+            Ok(Some(Ok(WsMessage::Text(text)))) => {
+                if let Ok(event) = serde_json::from_str::<Value>(text.as_str()) {
+                    if event["type"] == "calendar.changed" {
+                        return Some(event);
+                    }
+                }
+            }
+            Ok(Some(Ok(_))) => continue,
+            _ => return None,
         }
     }
-    None
 }
 
 #[tokio::test]
@@ -374,6 +382,10 @@ async fn a_calendar_change_reaches_its_audience_only() {
     let mut bob_ws = app.connect_ws(&app.cookie_for(fx.bob).await).await;
     let mut carol_ws = app.connect_ws(&app.cookie_for(fx.carol).await).await;
     let mut dave_ws = app.connect_ws(&app.cookie_for(outsider).await).await;
+    // Let the sockets settle, as the messaging tests do, so the change is not sent before them.
+    for ws in [&mut bob_ws, &mut carol_ws, &mut dave_ws] {
+        let _ = tokio::time::timeout(Duration::from_millis(300), ws.next()).await;
+    }
 
     let renamed = app
         .req(
@@ -387,8 +399,537 @@ async fn a_calendar_change_reaches_its_audience_only() {
         .expect("rename");
     assert_eq!(renamed.status(), 200);
 
-    let event = calendar_change(&mut bob_ws).await.expect("bob is told");
+    let event = calendar_change(&mut bob_ws, Duration::from_secs(3))
+        .await
+        .expect("bob is told");
     assert_eq!(event["payload"]["calendar_id"], general["id"]);
-    assert!(calendar_change(&mut carol_ws).await.is_none());
-    assert!(calendar_change(&mut dave_ws).await.is_none());
+    assert!(calendar_change(&mut carol_ws, Duration::from_millis(800))
+        .await
+        .is_none());
+    assert!(calendar_change(&mut dave_ws, Duration::from_millis(800))
+        .await
+        .is_none());
+}
+
+// --- Events, occurrences and series ---------------------------------------------------------------
+
+/// A Monday 9:00 Paris weekly meeting starting on 2026-10-19 (07:00Z, summer time).
+fn weekly_meeting(title: &str) -> Value {
+    json!({
+        "title": title,
+        "all_day": false,
+        "start": "2026-10-19T07:00:00Z",
+        "end": "2026-10-19T07:45:00Z",
+        "tzid": "Europe/Paris",
+        "rrule": "FREQ=WEEKLY;BYDAY=MO",
+    })
+}
+
+async fn create_event(
+    app: &TestApp,
+    cookie: &str,
+    calendar_id: &Value,
+    body: Value,
+) -> reqwest::Response {
+    app.req(
+        reqwest::Method::POST,
+        &format!("/api/v1/calendars/{}/events", calendar_id.as_str().unwrap()),
+        cookie,
+    )
+    .json(&body)
+    .send()
+    .await
+    .expect("create event")
+}
+
+async fn occurrences(app: &TestApp, cookie: &str, from: &str, to: &str) -> Vec<Value> {
+    let response = app
+        .req(
+            reqwest::Method::GET,
+            &format!("/api/v1/calendar/occurrences?from={from}&to={to}"),
+            cookie,
+        )
+        .send()
+        .await
+        .expect("occurrences");
+    assert_eq!(response.status(), 200);
+    response.json().await.expect("json")
+}
+
+fn starts(found: &[Value]) -> Vec<String> {
+    found
+        .iter()
+        .map(|o| o["start"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+async fn edit(
+    app: &TestApp,
+    cookie: &str,
+    event_id: &Value,
+    query: &str,
+    body: Value,
+) -> reqwest::Response {
+    app.req(
+        reqwest::Method::PATCH,
+        &format!("/api/v1/events/{}?{query}", event_id.as_str().unwrap()),
+        cookie,
+    )
+    .json(&body)
+    .send()
+    .await
+    .expect("edit event")
+}
+
+async fn remove(app: &TestApp, cookie: &str, event_id: &Value, query: &str) -> reqwest::StatusCode {
+    app.req(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/events/{}?{query}", event_id.as_str().unwrap()),
+        cookie,
+    )
+    .send()
+    .await
+    .expect("delete event")
+    .status()
+}
+
+#[tokio::test]
+async fn occurrences_unfold_a_series_and_respect_visibility() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let created = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe")).await;
+    assert_eq!(created.status(), 201);
+    let event: Value = created.json().await.expect("json");
+    assert_eq!(event["rrule"], "FREQ=WEEKLY;BYDAY=MO");
+    assert_eq!(event["is_recurring"], true);
+
+    // Someone in another space, with an event of their own.
+    let dave = make_user(&app.db, "dave").await;
+    let dave_cookie = app.cookie_for(dave).await;
+    let other: Value = app
+        .req(reqwest::Method::POST, "/api/v1/spaces", &dave_cookie)
+        .json(&json!({ "name": format!("Autre {}", Uuid::new_v4().simple()) }))
+        .send()
+        .await
+        .expect("space")
+        .json()
+        .await
+        .expect("json");
+    let other_calendar = calendars_of(&app, &dave_cookie)
+        .await
+        .into_iter()
+        .find(|c| c["space_id"] == other["id"])
+        .expect("their calendar");
+    assert_eq!(
+        create_event(
+            &app,
+            &dave_cookie,
+            &other_calendar["id"],
+            weekly_meeting("Ailleurs")
+        )
+        .await
+        .status(),
+        201
+    );
+
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-02T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec!["2026-10-19T07:00:00Z", "2026-10-26T08:00:00Z"]
+    );
+    assert!(found.iter().all(|o| o["title"] == "Point équipe"));
+    assert_eq!(found[1]["recurrence_id"], "2026-10-26T08:00:00Z");
+    assert_eq!(found[1]["calendar_id"], general["id"]);
+    assert_eq!(found[1]["can_edit"], true);
+    assert_eq!(found[1]["my_reminder_minutes"], 10);
+
+    // Asking for a calendar one cannot see changes nothing.
+    let narrowed = app
+        .req(
+            reqwest::Method::GET,
+            &format!(
+                "/api/v1/calendar/occurrences?from=2026-10-19T00:00:00Z&to=2026-11-02T00:00:00Z&calendars={}",
+                other_calendar["id"].as_str().unwrap()
+            ),
+            &alice,
+        )
+        .send()
+        .await
+        .expect("narrowed");
+    let narrowed: Vec<Value> = narrowed.json().await.expect("json");
+    assert!(narrowed.is_empty());
+
+    let too_wide = app
+        .req(
+            reqwest::Method::GET,
+            "/api/v1/calendar/occurrences?from=2026-01-01T00:00:00Z&to=2027-02-06T00:00:00Z",
+            &alice,
+        )
+        .send()
+        .await
+        .expect("too wide");
+    assert_eq!(too_wide.status(), 422);
+}
+
+#[tokio::test]
+async fn editing_this_occurrence_writes_an_exception() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+
+    let mut moved = weekly_meeting("Point spécial");
+    moved["start"] = json!("2026-10-26T13:00:00Z");
+    moved["end"] = json!("2026-10-26T13:45:00Z");
+    let edited = edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=this&recurrence_id=2026-10-26T08:00:00Z",
+        moved,
+    )
+    .await;
+    assert_eq!(edited.status(), 200);
+
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-02T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec!["2026-10-19T07:00:00Z", "2026-10-26T13:00:00Z"]
+    );
+    assert_eq!(found[0]["title"], "Point équipe");
+    assert_eq!(found[0]["overridden"], false);
+    assert_eq!(found[1]["title"], "Point spécial");
+    assert_eq!(found[1]["overridden"], true);
+    assert_eq!(found[1]["recurrence_id"], "2026-10-26T08:00:00Z");
+}
+
+#[tokio::test]
+async fn deleting_this_occurrence_cancels_it() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+
+    assert_eq!(
+        remove(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-11-02T08:00:00Z"
+        )
+        .await,
+        204
+    );
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-10T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec![
+            "2026-10-19T07:00:00Z",
+            "2026-10-26T08:00:00Z",
+            "2026-11-09T08:00:00Z"
+        ]
+    );
+
+    // A one-off event goes away whole, whatever the scope says.
+    let single: Value = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        json!({ "title": "Café", "all_day": false, "start": "2026-10-20T08:00:00Z",
+                "end": "2026-10-20T08:30:00Z", "tzid": "Europe/Paris" }),
+    )
+    .await
+    .json()
+    .await
+    .expect("json");
+    assert_eq!(
+        remove(&app, &alice, &single["event_id"], "scope=this").await,
+        204
+    );
+    let found = occurrences(&app, &alice, "2026-10-20T00:00:00Z", "2026-10-21T00:00:00Z").await;
+    assert!(found.iter().all(|o| o["title"] != "Café"));
+}
+
+#[tokio::test]
+async fn editing_following_moves_later_exceptions() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    // The 2nd of November (third Monday) moves to the afternoon.
+    let mut moved = weekly_meeting("Point équipe");
+    moved["start"] = json!("2026-11-02T14:00:00Z");
+    moved["end"] = json!("2026-11-02T14:45:00Z");
+    assert_eq!(
+        edit(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-11-02T08:00:00Z",
+            moved
+        )
+        .await
+        .status(),
+        200
+    );
+
+    // From the second Monday on, the meeting has a new name.
+    let mut renamed = weekly_meeting("Nouveau point");
+    renamed["start"] = json!("2026-10-26T08:00:00Z");
+    renamed["end"] = json!("2026-10-26T08:45:00Z");
+    let split = edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=following&recurrence_id=2026-10-26T08:00:00Z",
+        renamed,
+    )
+    .await;
+    assert_eq!(split.status(), 200);
+    let second: Value = split.json().await.expect("json");
+    assert_ne!(second["event_id"], event["event_id"]);
+
+    let first: Value = app
+        .req(
+            reqwest::Method::GET,
+            &format!("/api/v1/events/{}", event["event_id"].as_str().unwrap()),
+            &alice,
+        )
+        .send()
+        .await
+        .expect("get")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        first["rrule"],
+        "FREQ=WEEKLY;BYDAY=MO;UNTIL=20261026T075959Z"
+    );
+
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-10T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec![
+            "2026-10-19T07:00:00Z",
+            "2026-10-26T08:00:00Z",
+            "2026-11-02T14:00:00Z",
+            "2026-11-09T08:00:00Z"
+        ]
+    );
+    assert_eq!(found[0]["title"], "Point équipe");
+    assert_eq!(found[0]["event_id"], event["event_id"]);
+    for later in &found[1..] {
+        assert_eq!(later["event_id"], second["event_id"]);
+    }
+    assert_eq!(found[2]["overridden"], true);
+}
+
+#[tokio::test]
+async fn editing_all_with_a_new_time_drops_moves_and_keeps_cancellations() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        remove(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-10-26T08:00:00Z"
+        )
+        .await,
+        204
+    );
+    let mut moved = weekly_meeting("Point équipe");
+    moved["start"] = json!("2026-11-02T14:00:00Z");
+    moved["end"] = json!("2026-11-02T14:45:00Z");
+    assert_eq!(
+        edit(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-11-02T08:00:00Z",
+            moved
+        )
+        .await
+        .status(),
+        200
+    );
+
+    // The whole series moves an hour later: 10:00 in Paris.
+    let mut later = weekly_meeting("Point équipe");
+    later["start"] = json!("2026-10-19T08:00:00Z");
+    later["end"] = json!("2026-10-19T08:45:00Z");
+    assert_eq!(
+        edit(&app, &alice, &event["event_id"], "scope=all", later)
+            .await
+            .status(),
+        200
+    );
+
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-10T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec![
+            "2026-10-19T08:00:00Z",
+            "2026-11-02T09:00:00Z",
+            "2026-11-09T09:00:00Z"
+        ]
+    );
+    assert!(found.iter().all(|o| o["overridden"] == false));
+}
+
+#[tokio::test]
+async fn the_ui_cannot_create_an_hourly_rule() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let mut hourly = weekly_meeting("Trop souvent");
+    hourly["rrule"] = json!("FREQ=HOURLY");
+    assert_eq!(
+        create_event(&app, &alice, &general["id"], hourly)
+            .await
+            .status(),
+        422
+    );
+}
+
+#[tokio::test]
+async fn limits_on_text_fields() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let mut bodies = Vec::new();
+    bodies.push(weekly_meeting(&"a".repeat(501)));
+    bodies.push(weekly_meeting("   "));
+    let mut far_place = weekly_meeting("Lieu");
+    far_place["location"] = json!("b".repeat(501));
+    bodies.push(far_place);
+    let mut long_text = weekly_meeting("Texte");
+    long_text["description"] = json!("c".repeat(20_001));
+    bodies.push(long_text);
+    let mut backwards = weekly_meeting("À l'envers");
+    backwards["end"] = json!("2026-10-19T06:00:00Z");
+    bodies.push(backwards);
+    bodies.push(
+        json!({ "title": "Vide", "all_day": true, "start": "2026-10-20", "end": "2026-10-20" }),
+    );
+    let mut nowhere = weekly_meeting("Nulle part");
+    nowhere["tzid"] = json!("Mars/Olympus");
+    bodies.push(nowhere);
+    for body in bodies {
+        assert_eq!(
+            create_event(&app, &alice, &general["id"], body)
+                .await
+                .status(),
+            422
+        );
+    }
+    // The limits themselves are allowed.
+    let mut longest = weekly_meeting(&"a".repeat(500));
+    longest["location"] = json!("b".repeat(500));
+    longest["description"] = json!("c".repeat(20_000));
+    assert_eq!(
+        create_event(&app, &alice, &general["id"], longest)
+            .await
+            .status(),
+        201
+    );
+}
+
+#[tokio::test]
+async fn a_member_without_write_access_can_still_set_their_reminder() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    promote_to_admin(&app.db, fx.space_id, fx.alice).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    app.req(
+        reqwest::Method::PATCH,
+        &format!("/api/v1/calendars/{}", general["id"].as_str().unwrap()),
+        &alice,
+    )
+    .json(&json!({ "write_access": "admins" }))
+    .send()
+    .await
+    .expect("close");
+
+    assert_eq!(
+        create_event(&app, &bob, &general["id"], weekly_meeting("Moi aussi"))
+            .await
+            .status(),
+        403
+    );
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        edit(
+            &app,
+            &bob,
+            &event["event_id"],
+            "scope=all",
+            weekly_meeting("Changé")
+        )
+        .await
+        .status(),
+        403
+    );
+
+    let mine = app
+        .req(
+            reqwest::Method::PUT,
+            &format!("/api/v1/events/{}/me", event["event_id"].as_str().unwrap()),
+            &bob,
+        )
+        .json(&json!({ "reminder_minutes": 30 }))
+        .send()
+        .await
+        .expect("my reminder");
+    assert_eq!(mine.status(), 204);
+    let for_bob = occurrences(&app, &bob, "2026-10-19T00:00:00Z", "2026-10-20T00:00:00Z").await;
+    assert_eq!(for_bob[0]["my_reminder_minutes"], 30);
+    assert_eq!(for_bob[0]["can_edit"], false);
+    let for_alice = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-10-20T00:00:00Z").await;
+    assert_eq!(for_alice[0]["my_reminder_minutes"], 10);
+
+    // An all-day event takes only the all-day delays.
+    let off_day = app
+        .req(
+            reqwest::Method::PUT,
+            &format!("/api/v1/events/{}/me", event["event_id"].as_str().unwrap()),
+            &bob,
+        )
+        .json(&json!({ "reminder_minutes": 420 }))
+        .send()
+        .await
+        .expect("bad delay");
+    assert_eq!(off_day.status(), 422);
 }

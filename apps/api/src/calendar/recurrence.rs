@@ -38,6 +38,56 @@ pub enum RecurrenceId {
     Date(Date),
 }
 
+impl RecurrenceId {
+    /// How an exception names its occurrence in the database: `2026-10-26T08:00:00Z` (always UTC)
+    /// or `2026-10-26`.
+    pub fn to_key(self) -> String {
+        match self {
+            Self::Instant(instant) => {
+                let utc = instant.to_offset(time::UtcOffset::UTC);
+                format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                    utc.year(),
+                    u8::from(utc.month()),
+                    utc.day(),
+                    utc.hour(),
+                    utc.minute(),
+                    utc.second()
+                )
+            }
+            Self::Date(date) => format!(
+                "{:04}-{:02}-{:02}",
+                date.year(),
+                u8::from(date.month()),
+                date.day()
+            ),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        if key.len() == 10 {
+            let format = time::macros::format_description!("[year]-[month]-[day]");
+            return Date::parse(key, &format).ok().map(Self::Date);
+        }
+        OffsetDateTime::parse(key, &time::format_description::well_known::Rfc3339)
+            .ok()
+            .map(Self::Instant)
+    }
+
+    /// The same occurrence once the whole series moved by `delta` (whole days for an all-day one).
+    pub fn shifted(self, delta: Duration) -> Self {
+        match self {
+            Self::Instant(instant) => Self::Instant(instant + delta),
+            Self::Date(date) => Self::Date(date + Duration::days(delta.whole_days())),
+        }
+    }
+}
+
+/// Whether `name` is an IANA time zone this server knows.
+pub fn known_time_zone(name: &str) -> bool {
+    name.parse::<chrono_tz::Tz>().is_ok()
+}
+
 /// An occurrence cancelled or moved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExceptionInput {
@@ -928,5 +978,36 @@ mod tests {
             expand(&s, at("2026-10-19T00:00:00Z"), at("2026-10-20T00:00:00Z")),
             Err(RecurrenceError::UnknownTimeZone("Mars/Olympus".to_owned()))
         );
+    }
+
+    #[test]
+    fn recurrence_ids_have_a_stable_text_form() {
+        let instant = RecurrenceId::Instant(at("2026-10-26T09:00:00+01:00"));
+        assert_eq!(instant.to_key(), "2026-10-26T08:00:00Z");
+        assert_eq!(
+            RecurrenceId::from_key("2026-10-26T08:00:00Z"),
+            Some(instant)
+        );
+        let date = RecurrenceId::Date(day(2026, 10, 7));
+        assert_eq!(date.to_key(), "2026-10-07");
+        assert_eq!(RecurrenceId::from_key("2026-10-07"), Some(date));
+        assert_eq!(RecurrenceId::from_key("yesterday"), None);
+        // Moving a series moves its exceptions' keys with it.
+        assert_eq!(
+            instant.shifted(Duration::hours(1)),
+            RecurrenceId::Instant(at("2026-10-26T09:00:00Z"))
+        );
+        assert_eq!(
+            date.shifted(Duration::days(2)),
+            RecurrenceId::Date(day(2026, 10, 9))
+        );
+    }
+
+    #[test]
+    fn time_zones_are_known_by_their_iana_name() {
+        assert!(known_time_zone("Europe/Paris"));
+        assert!(known_time_zone("America/New_York"));
+        assert!(!known_time_zone("Mars/Olympus"));
+        assert!(!known_time_zone(""));
     }
 }
