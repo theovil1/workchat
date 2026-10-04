@@ -126,6 +126,10 @@ pub async fn list_occurrences(
                     Some(e) => e.location.clone(),
                     None => event.location.clone(),
                 },
+                description: match exception {
+                    Some(e) => e.description.clone(),
+                    None => event.description.clone(),
+                },
                 all_day: event.all_day,
                 start,
                 end,

@@ -143,6 +143,8 @@ pub struct OccurrenceDto {
     pub recurrence_id: Option<String>,
     pub title: String,
     pub location: Option<String>,
+    /// The occurrence's notes: its own when it was changed apart, else the series'.
+    pub description: Option<String>,
     pub all_day: bool,
     /// RFC 3339 in UTC for a timed occurrence, `YYYY-MM-DD` for an all-day one.
     pub start: String,
@@ -161,7 +163,6 @@ pub struct OccurrenceDto {
 pub struct EventDto {
     #[serde(flatten)]
     pub head: OccurrenceDto,
-    pub description: Option<String>,
     pub rrule: Option<String>,
     pub created_by: Option<Uuid>,
     /// RFC 3339.

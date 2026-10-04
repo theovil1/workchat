@@ -395,7 +395,7 @@ pub fn expand(
             continue;
         }
         if let Some(when) = exception.when {
-            if window.overlaps(&when) {
+            if window.overlaps(&when) && is_occurrence(series, &exception.recurrence_id)? {
                 found.push(Occurrence {
                     recurrence_id: Some(exception.recurrence_id),
                     when,
@@ -407,6 +407,25 @@ pub fn expand(
     found.sort_by_key(|o| sort_key(&o.when));
     found.truncate(MAX_OCCURRENCES);
     Ok(found)
+}
+
+/// Whether `id` names an occurrence the series' rule (or its added dates) produces: an exception
+/// that names anything else is stale and is ignored.
+pub fn is_occurrence(series: &SeriesInput, id: &RecurrenceId) -> Result<bool, RecurrenceError> {
+    match (series.when, id) {
+        (When::Timed { .. }, RecurrenceId::Date(_))
+        | (When::AllDay { .. }, RecurrenceId::Instant(_)) => return Ok(false),
+        _ => {}
+    }
+    let at = recurrence_instant(id);
+    let Some(rule) = series.rrule else {
+        return Ok(at == start_instant(&series.when));
+    };
+    // `unfold` keeps what starts before the upper bound, so the window is one second wide.
+    let found = unfold(series, rule, Some((at, at + Duration::seconds(1))), 2)?.starts;
+    Ok(found
+        .iter()
+        .any(|start| series_id(&series.when, *start) == *id))
 }
 
 /// When the series' last occurrence ends, or `None` when it never stops (or stops so far away that
@@ -1259,5 +1278,29 @@ mod tests {
             local_parts(at("2026-10-26T23:30:00Z"), "Europe/Paris"),
             Some((day(2026, 10, 27), 0, 30))
         );
+    }
+
+    #[test]
+    fn exceptions_off_the_rule_are_ignored() {
+        // A fortnightly series has no occurrence on the 26th: a row naming it is stale.
+        let exceptions = [ExceptionInput {
+            recurrence_id: RecurrenceId::Instant(at("2026-10-26T08:00:00Z")),
+            cancelled: false,
+            when: Some(timed("2026-10-27T08:00:00Z", "2026-10-27T08:45:00Z")),
+        }];
+        let s = series(
+            timed("2026-10-19T07:00:00Z", "2026-10-19T07:45:00Z"),
+            Some("Europe/Paris"),
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO",
+            &exceptions,
+        );
+        let found = expand(&s, at("2026-10-19T00:00:00Z"), at("2026-11-10T00:00:00Z")).unwrap();
+        assert_eq!(
+            starts(&found),
+            vec![at("2026-10-19T07:00:00Z"), at("2026-11-02T08:00:00Z")]
+        );
+        assert!(is_occurrence(&s, &RecurrenceId::Instant(at("2026-11-02T08:00:00Z"))).unwrap());
+        assert!(!is_occurrence(&s, &RecurrenceId::Instant(at("2026-10-26T08:00:00Z"))).unwrap());
+        assert!(!is_occurrence(&s, &RecurrenceId::Date(day(2026, 11, 2))).unwrap());
     }
 }

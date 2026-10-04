@@ -133,7 +133,7 @@ export function TimeGrid({
                         ...chipStyle(lookOf(o)),
                         position: "absolute",
                         top: (p.top / 60) * HOUR,
-                        height: Math.max(18, (p.height / 60) * HOUR - 2),
+                        height: (p.height / 60) * HOUR - 2,
                         left: `calc(${p.column * width}% + 2px)`,
                         width: `calc(${width}% - 4px)`,
                         borderRadius: "var(--radius-sm)",

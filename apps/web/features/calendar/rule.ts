@@ -92,9 +92,10 @@ export function parseRule(rule: string): RuleForm | null {
   return form;
 }
 
-/** Write the form as a rule. An end date is the end of that day: in UTC for a timed event, a date for
- *  an all-day one, as RFC 5545 asks. */
-export function buildRule(form: RuleForm, allDay: boolean): string {
+/** Write the form as a rule. An end date is the end of that day: for a timed event the last second of
+ *  it in the event's own zone, written in UTC by `endOfDay` as RFC 5545 asks; for an all-day one, the
+ *  date itself. */
+export function buildRule(form: RuleForm, allDay: boolean, endOfDay: (day: string) => string): string {
   const parts = [`FREQ=${form.freq}`];
   if (form.interval > 1) parts.push(`INTERVAL=${form.interval}`);
   if (form.freq === "WEEKLY") parts.push(`BYDAY=${sortDays(form.days).join(",")}`);
@@ -105,7 +106,7 @@ export function buildRule(form: RuleForm, allDay: boolean): string {
   if (form.end.kind === "count") parts.push(`COUNT=${form.end.count}`);
   if (form.end.kind === "until") {
     const date = form.end.date.replaceAll("-", "");
-    parts.push(`UNTIL=${allDay ? date : `${date}T235959Z`}`);
+    parts.push(`UNTIL=${allDay ? date : endOfDay(form.end.date)}`);
   }
   return parts.join(";");
 }

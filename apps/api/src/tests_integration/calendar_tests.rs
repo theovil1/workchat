@@ -1481,3 +1481,231 @@ async fn no_mail_when_connected_or_turned_off() {
     assert!(!report.mailed.contains(&fx.bob));
     assert!(!report.mailed.contains(&fx.carol));
 }
+
+// --- Final review fixes ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn following_from_a_moved_occurrence_keeps_the_edit() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    let mut moved = weekly_meeting("Point équipe");
+    moved["start"] = json!("2026-11-02T13:00:00Z");
+    moved["end"] = json!("2026-11-02T13:45:00Z");
+    edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=this&recurrence_id=2026-11-02T08:00:00Z",
+        moved,
+    )
+    .await;
+
+    // From that moved occurrence on, a new name.
+    let mut renamed = weekly_meeting("Nouveau point");
+    renamed["start"] = json!("2026-11-02T13:00:00Z");
+    renamed["end"] = json!("2026-11-02T13:45:00Z");
+    let split = edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=following&recurrence_id=2026-11-02T08:00:00Z",
+        renamed,
+    )
+    .await;
+    assert_eq!(split.status(), 200);
+    let found = occurrences(&app, &alice, "2026-11-02T00:00:00Z", "2026-11-03T00:00:00Z").await;
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0]["title"], "Nouveau point");
+    assert_eq!(found[0]["start"], "2026-11-02T13:00:00Z");
+}
+
+#[tokio::test]
+async fn following_into_all_day_carries_no_timed_exception() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    let mut moved = weekly_meeting("Point équipe");
+    moved["start"] = json!("2026-11-09T13:00:00Z");
+    moved["end"] = json!("2026-11-09T13:45:00Z");
+    edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=this&recurrence_id=2026-11-09T08:00:00Z",
+        moved,
+    )
+    .await;
+    let whole_day = json!({ "title": "Journée d'équipe", "all_day": true, "start": "2026-11-02",
+                            "end": "2026-11-03", "rrule": "FREQ=WEEKLY;BYDAY=MO" });
+    edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=following&recurrence_id=2026-11-02T08:00:00Z",
+        whole_day,
+    )
+    .await;
+    let found = occurrences(&app, &alice, "2026-11-01T00:00:00Z", "2026-11-17T00:00:00Z").await;
+    for o in &found {
+        let start = o["start"].as_str().unwrap();
+        assert_eq!(
+            o["all_day"] == true,
+            start.len() == 10,
+            "mixed occurrence {o}"
+        );
+    }
+    assert!(
+        found.iter().all(|o| o["title"] == "Journée d'équipe"),
+        "{found:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_new_rule_leaves_no_phantom_occurrence() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let event: Value = create_event(&app, &alice, &general["id"], weekly_meeting("Point équipe"))
+        .await
+        .json()
+        .await
+        .expect("json");
+    // The 26th is renamed, then the series turns fortnightly: the 26th is no longer one of it.
+    let mut renamed = weekly_meeting("Point spécial");
+    renamed["start"] = json!("2026-10-26T08:00:00Z");
+    renamed["end"] = json!("2026-10-26T08:45:00Z");
+    edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=this&recurrence_id=2026-10-26T08:00:00Z",
+        renamed,
+    )
+    .await;
+    let mut fortnightly = weekly_meeting("Point équipe");
+    fortnightly["rrule"] = json!("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO");
+    assert_eq!(
+        edit(&app, &alice, &event["event_id"], "scope=all", fortnightly)
+            .await
+            .status(),
+        200
+    );
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-10T00:00:00Z").await;
+    assert_eq!(
+        starts(&found),
+        vec!["2026-10-19T07:00:00Z", "2026-11-02T08:00:00Z"]
+    );
+    // And an exception for a day the series does not have is refused.
+    let mut stray = weekly_meeting("Ailleurs");
+    stray["start"] = json!("2026-10-21T08:00:00Z");
+    stray["end"] = json!("2026-10-21T08:45:00Z");
+    assert_eq!(
+        edit(
+            &app,
+            &alice,
+            &event["event_id"],
+            "scope=this&recurrence_id=2026-10-21T08:00:00Z",
+            stray
+        )
+        .await
+        .status(),
+        422
+    );
+}
+
+#[tokio::test]
+async fn an_occurrence_keeps_its_own_notes() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let mut meeting = weekly_meeting("Point équipe");
+    meeting["description"] = json!("Ordre du jour habituel");
+    let event: Value = create_event(&app, &alice, &general["id"], meeting)
+        .await
+        .json()
+        .await
+        .expect("json");
+    let mut special = weekly_meeting("Point équipe");
+    special["start"] = json!("2026-10-26T08:00:00Z");
+    special["end"] = json!("2026-10-26T08:45:00Z");
+    special["description"] = json!("Bilan du trimestre");
+    edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        "scope=this&recurrence_id=2026-10-26T08:00:00Z",
+        special,
+    )
+    .await;
+    let found = occurrences(&app, &alice, "2026-10-19T00:00:00Z", "2026-11-02T00:00:00Z").await;
+    assert_eq!(found[0]["description"], "Ordre du jour habituel");
+    assert_eq!(found[1]["description"], "Bilan du trimestre");
+}
+
+#[tokio::test]
+async fn a_reminder_names_the_moved_occurrence() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let now = sweep_moment(13);
+    // A daily 9:00 series; today's occurrence is moved to 11:10 in another room.
+    let first = now - time::Duration::days(2);
+    let created = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        json!({ "title": "Tous les jours", "all_day": false, "start": rfc(first),
+                "end": rfc(first + time::Duration::minutes(30)), "tzid": "Europe/Paris",
+                "rrule": "FREQ=DAILY", "location": "Salle Ouest" }),
+    )
+    .await;
+    let event: Value = created.json().await.expect("json");
+    let moved_start = now + time::Duration::minutes(10);
+    let edited = edit(
+        &app,
+        &alice,
+        &event["event_id"],
+        &format!("scope=this&recurrence_id={}", rfc(now)),
+        json!({ "title": "Exceptionnel", "all_day": false, "start": rfc(moved_start),
+                "end": rfc(moved_start + time::Duration::minutes(30)), "tzid": "Europe/Paris",
+                "rrule": "FREQ=DAILY", "location": "Salle Est" }),
+    )
+    .await;
+    assert_eq!(edited.status(), 200);
+    crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    let inbox: Value = app
+        .req(reqwest::Method::GET, "/api/v1/notifications", &alice)
+        .send()
+        .await
+        .expect("inbox")
+        .json()
+        .await
+        .expect("json");
+    let reminder = inbox["notifications"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["event_id"] == event["event_id"])
+        .expect("reminder");
+    assert_eq!(reminder["event_title"], "Exceptionnel");
+    assert_eq!(reminder["event_location"], "Salle Est");
+    assert_eq!(reminder["recurrence_id"], rfc(now).replace("+00:00", "Z"));
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Icon, IconButton, Tabs } from "@/components/ds";
 import { setCalendarMe, type Calendar, type Occurrence } from "@/lib/data/calendar";
 import { useTranslation } from "@/lib/i18n";
@@ -39,6 +39,8 @@ export type CalendarScreenProps = {
   /** The phone's tab remembers the last filter rather than following a space. */
   rememberFilter?: boolean;
   onBack?: () => void;
+  /** An event to open (a clicked reminder): the screen starts on its day, with its details. */
+  focus?: { eventId: string; start: string; allDay: boolean };
   onNotify?: (toast: { tone: "info" | "success" | "danger"; title: string }) => void;
 };
 
@@ -48,11 +50,12 @@ export type CalendarScreenProps = {
  * the filter stays on screen, struck through, so being free or not can be read without switching
  * spaces; the viewer's own calendars are always drawn in full.
  */
-export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFilter, onBack, onNotify }: CalendarScreenProps) {
+export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFilter, onBack, focus, onNotify }: CalendarScreenProps) {
   const { t } = useTranslation();
   const today = localDay(new Date().toISOString(), timeZone);
   const [view, setView] = useState<View>(compact ? "list" : "week");
-  const [anchor, setAnchor] = useState(today);
+  const focusDay = focus ? (focus.allDay ? focus.start : localDay(focus.start, timeZone)) : null;
+  const [anchor, setAnchor] = useState(focusDay ?? today);
   const [filter, setFilterState] = useState<Filter>(() => {
     const kept = rememberFilter ? storedFilter() : null;
     if (kept) return kept;
@@ -64,6 +67,18 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
 
   const range = useMemo(() => rangeFor(view, anchor, timeZone), [view, anchor, timeZone]);
   const { calendars, occurrences, failed, reload, setCalendars } = useCalendarData(range);
+
+  // Once the focused event's day is loaded, open it, once.
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focus || focused.current || !occurrences) return;
+    const found = occurrences.find((o) => o.eventId === focus.eventId && (o.start === focus.start || o.start.slice(0, 10) === focusDay));
+    if (found) {
+      focused.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpened(found);
+    }
+  }, [focus, focusDay, occurrences]);
 
   const setFilter = (next: Filter) => {
     setFilterState(next);

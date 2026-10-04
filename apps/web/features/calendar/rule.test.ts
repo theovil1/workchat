@@ -3,6 +3,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildRule, parseRule, presetOf, presetRule } from "./rule.ts";
 
+/** The end of a day in UTC, as a timed rule's UNTIL needs it; Paris for these tests. */
+const parisEnd = (day: string) => {
+  const summer = day >= "2026-03-29" && day < "2026-10-25";
+  return `${day.replaceAll("-", "")}T${summer ? "215959" : "225959"}Z`;
+};
+const utcEnd = (day: string) => `${day.replaceAll("-", "")}T235959Z`;
+
 test("rule_round_trip", () => {
   for (const [rule, allDay] of [
     ["FREQ=DAILY", false],
@@ -21,12 +28,20 @@ test("rule_round_trip", () => {
   ] as const) {
     const form = parseRule(rule);
     assert.ok(form, rule);
-    assert.equal(buildRule(form, allDay), rule);
+    assert.equal(buildRule(form, allDay, utcEnd), rule);
   }
   // What the editor cannot show is said so, rather than mangled.
   for (const rule of ["FREQ=YEARLY;BYWEEKNO=20", "FREQ=HOURLY", "FREQ=MONTHLY;BYMONTHDAY=15", "nonsense"]) {
     assert.equal(parseRule(rule), null, rule);
   }
+});
+
+test("a timed rule ends at the end of the chosen day in the event's zone", () => {
+  const form = parseRule("FREQ=WEEKLY;BYDAY=MO")!;
+  form.end = { kind: "until", date: "2026-11-09" };
+  assert.equal(buildRule(form, false, parisEnd), "FREQ=WEEKLY;BYDAY=MO;UNTIL=20261109T225959Z");
+  // An all-day rule takes the date itself.
+  assert.equal(buildRule(form, true, parisEnd), "FREQ=WEEKLY;BYDAY=MO;UNTIL=20261109");
 });
 
 test("presets are the screen's quick choices", () => {

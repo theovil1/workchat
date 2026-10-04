@@ -186,19 +186,21 @@ export async function syncPush(): Promise<void> {
 }
 
 /** A notification the worker asks the app to open, after a click on it. */
-export type PushTarget = { spaceId: string; conversationId: string; messageId: string; id: string };
+export type PushTarget = { spaceId: string; conversationId: string; messageId: string; id: string; eventId?: string };
 
 /** Listen for the worker's "open this" messages (a click while a window was already open). */
 export function onPushOpen(handler: (target: PushTarget) => void): () => void {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return () => {};
   const listener = (event: MessageEvent) => {
     const data = event.data as Partial<PushTarget> & { type?: string };
-    if (data?.type !== "ruchoir:open-notification" || !data.conversationId) return;
+    // A message notification names its conversation; a calendar reminder, its event.
+    if (data?.type !== "ruchoir:open-notification" || !(data.conversationId || data.eventId)) return;
     handler({
       spaceId: data.spaceId ?? "",
-      conversationId: data.conversationId,
+      conversationId: data.conversationId ?? "",
       messageId: data.messageId ?? "",
       id: data.id ?? "",
+      eventId: data.eventId,
     });
   };
   navigator.serviceWorker.addEventListener("message", listener);

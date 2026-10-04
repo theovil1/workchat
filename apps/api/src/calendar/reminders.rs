@@ -355,8 +355,9 @@ pub fn texts(
     let (lead, when, time_part) = match dto.event_start.as_deref().and_then(RecurrenceId::from_key)
     {
         Some(RecurrenceId::Instant(start)) => {
-            let lead =
-                mail_text::reminder_lead(locale, (start - now).whole_minutes(), ReminderDay::Timed);
+            // Rounded up: the sweep runs some seconds after the reminder fell due.
+            let minutes = ((start - now).whole_seconds() + 59).div_euclid(60);
+            let lead = mail_text::reminder_lead(locale, minutes, ReminderDay::Timed);
             match recurrence::local_parts(start, zone) {
                 Some((date, hour, minute)) => {
                     let clock = format!("{hour:02}:{minute:02}");
@@ -446,7 +447,20 @@ pub async fn hydrate<C: ConnectionTrait>(
             } else {
                 RecurrenceId::Instant(occurrence)
             };
-            let exception = changed.get(&(event.id, id.to_key()));
+            // The log keeps the occurrence's start as it happens: for a moved occurrence that is
+            // its new start, so the exception is also looked for by where it moved to.
+            let moved_here = |e: &&exceptions::Model| {
+                e.event_id == event.id
+                    && !e.cancelled
+                    && (e.start_at == Some(occurrence)
+                        || (event.all_day && e.start_date == Some(occurrence.date())))
+            };
+            let exception = changed
+                .get(&(event.id, id.to_key()))
+                .or_else(|| changed.values().find(moved_here));
+            let id = exception
+                .and_then(|e| RecurrenceId::from_key(&e.recurrence_id))
+                .unwrap_or(id);
             let start = match (
                 exception.and_then(|e| e.start_at),
                 exception.and_then(|e| e.start_date),
@@ -559,5 +573,42 @@ mod tests {
             effective_minutes(Some(Some(-540)), None, None, true),
             Some(-540)
         );
+    }
+
+    #[test]
+    fn the_lead_counts_whole_minutes_from_a_sweep_a_little_late() {
+        let start = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();
+        let dto = NotificationDto {
+            id: Uuid::nil(),
+            kind: "calendar_reminder".to_owned(),
+            conversation_id: None,
+            space_id: None,
+            channel_name: None,
+            space_name: String::new(),
+            message_id: None,
+            actor_id: None,
+            actor_name: None,
+            preview: String::new(),
+            created_at: String::new(),
+            read: false,
+            event_id: Some(Uuid::nil()),
+            recurrence_id: None,
+            event_title: Some("Point".to_owned()),
+            event_start: Some(instant_text(start)),
+            event_all_day: Some(false),
+            event_location: None,
+            calendar_name: None,
+        };
+        // Due ten minutes before; the sweep runs 30 seconds after that.
+        let now = start - Duration::minutes(10) + Duration::seconds(30);
+        let words = texts(Locale::En, &dto, now, "Europe/Paris");
+        assert_eq!(words.lead, "In 10 min");
+        let a_day = texts(
+            Locale::En,
+            &dto,
+            start - Duration::days(1) + Duration::seconds(40),
+            "Europe/Paris",
+        );
+        assert_eq!(a_day.lead, "Tomorrow");
     }
 }

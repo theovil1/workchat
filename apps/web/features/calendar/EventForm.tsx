@@ -96,7 +96,9 @@ export function EventForm({ calendars, spaces, timeZone, draft, editing, onDone,
   const [custom, setCustom] = useState<RuleForm>(formFor(originalRule, initial.startDay));
   const [reminder, setReminder] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState(occurrence?.location ?? "");
-  const [description, setDescription] = useState(event?.description ?? "");
+  const [description, setDescription] = useState(occurrence?.description ?? "");
+  /** Whether the repetition was touched: an untouched rule is sent back exactly as it came. */
+  const [ruleTouched, setRuleTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [askScope, setAskScope] = useState(false);
@@ -107,9 +109,13 @@ export function EventForm({ calendars, spaces, timeZone, draft, editing, onDone,
     ...spaces.map((s) => ({ label: s.name, items: writable.filter((c) => c.spaceId === s.id) })),
   ].filter((g) => g.items.length > 0);
 
+  /** The last second of a day in the event's zone, in UTC, as a timed rule's UNTIL writes it. */
+  const endOfDay = (day: string) =>
+    new Date(Date.parse(zonedTime(addDays(day, 1), 0, tz)) - 1000).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
   const rule = (): string | null => {
-    if (preset === "imported") return originalRule;
-    if (preset === "custom") return buildRule(custom, allDay);
+    if (!ruleTouched || preset === "imported") return originalRule;
+    if (preset === "custom") return buildRule(custom, allDay, endOfDay);
     return presetRule(preset, startDay);
   };
 
@@ -139,8 +145,17 @@ export function EventForm({ calendars, spaces, timeZone, draft, editing, onDone,
       if (!occurrence || !event) {
         await createEvent(calendarId, body);
       } else if (!event.isRecurring || scope === "all" || !scope) {
-        // The whole series moves by as much as the occurrence on screen was moved.
-        let whole: EventInput = { ...body, calendarId: calendarId !== event.calendarId ? calendarId : undefined };
+        // The whole series moves by as much as the occurrence on screen was moved, and what was not
+        // changed on screen keeps the series' own value (the occurrence may have its own).
+        const kept = (shown: string | undefined, own: string | undefined, series: string | undefined) =>
+          (shown ?? "") === (own ?? "") ? series : shown;
+        let whole: EventInput = {
+          ...body,
+          title: kept(body.title, occurrence.title, event.title) ?? body.title,
+          location: kept(body.location, occurrence.location, event.location),
+          description: kept(body.description, occurrence.description, event.description),
+          calendarId: calendarId !== event.calendarId ? calendarId : undefined,
+        };
         if (event.isRecurring && occurrence.recurrenceId) {
           if (body.allDay && event.allDay) {
             const shift = dayDiff(occurrence.start, body.start);
@@ -307,12 +322,22 @@ export function EventForm({ calendars, spaces, timeZone, draft, editing, onDone,
             onChange={(e) => {
               const next = e.target.value as Preset | "imported";
               if (next === "custom") setCustom(formFor(rule(), startDay));
+              setRuleTouched(true);
               setPreset(next);
             }}
             options={repeatOptions}
           />
         </Field>
-        {preset === "custom" ? <RecurrenceEditor form={custom} start={startDay} onChange={setCustom} /> : null}
+        {preset === "custom" ? (
+          <RecurrenceEditor
+            form={custom}
+            start={startDay}
+            onChange={(next) => {
+              setRuleTouched(true);
+              setCustom(next);
+            }}
+          />
+        ) : null}
         <Field label={t("calendar.myReminder")} htmlFor="event-reminder" hint={reminder === undefined ? t("calendar.reminderFollows") : undefined}>
           <Select
             id="event-reminder"

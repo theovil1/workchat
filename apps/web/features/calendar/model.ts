@@ -120,8 +120,10 @@ export function inFilter(
 /** An event placed on a day's grid, in minutes from local midnight. */
 export type Positioned<T> = { item: T; top: number; height: number; column: number; columns: number };
 
-/** The shortest an event is drawn, so a five-minute call can still be read and tapped. */
-export const MIN_HEIGHT = 15;
+/** The shortest an event is drawn, in minutes, so a five-minute call can still be read and tapped:
+ *  on the grid's 48 px hour, 25 minutes is the 20 px a one-line title needs. Overlaps are worked out
+ *  on that drawn height, so two short events never cover each other. */
+export const MIN_HEIGHT = 25;
 
 /**
  * Where a day's timed events sit: their top and height in minutes, and, for events that overlap,

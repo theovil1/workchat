@@ -157,10 +157,15 @@ pub fn render(
             head.append_multi_property(moment("RDATE", Moment::Instant(*rdate), tzid));
         }
         let mut changed = Vec::new();
+        let series = super::events::series_of(event, &[]);
         for row in rows {
             let Some(id) = RecurrenceId::from_key(&row.recurrence_id) else {
                 continue;
             };
+            // A row naming no occurrence of the rule (stale after a change of rule) says nothing.
+            if !recurrence::is_occurrence(&series, &id).unwrap_or(false) {
+                continue;
+            }
             if row.cancelled {
                 head.append_multi_property(moment("EXDATE", id.into(), tzid));
             } else {

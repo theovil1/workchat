@@ -176,6 +176,7 @@ async fn event_dto<C: ConnectionTrait>(
         recurrence_id: None,
         title: event.title.clone(),
         location: event.location.clone(),
+        description: event.description.clone(),
         all_day: event.all_day,
         start,
         end,
@@ -187,7 +188,6 @@ async fn event_dto<C: ConnectionTrait>(
     };
     Ok(EventDto {
         head,
-        description: event.description,
         rrule: event.rrule,
         created_by: event.created_by,
         updated_at: instant_text(event.updated_at),
@@ -403,6 +403,14 @@ fn required_recurrence_id(query: &EditQuery) -> Result<RecurrenceId, CalendarErr
         ))
 }
 
+/// Whether `id` is an occurrence of the event's series as it stands.
+fn names_an_occurrence(
+    event: &calendar_events::Model,
+    id: &RecurrenceId,
+) -> Result<bool, CalendarError> {
+    Ok(recurrence::is_occurrence(&series_of(event, &[]), id)?)
+}
+
 /// The series' own first occurrence, as a recurrence id.
 fn first_id(event: &calendar_events::Model) -> RecurrenceId {
     match when_of(event) {
@@ -589,6 +597,11 @@ pub async fn update_event(
     let result_id = match scope {
         EditScope::This => {
             let id = required_recurrence_id(&query)?;
+            if !names_an_occurrence(&event, &id)? {
+                return Err(CalendarError::Invalid(
+                    "This occurrence is not one of the series.",
+                ));
+            }
             if all_day != event.all_day {
                 return Err(CalendarError::Invalid(
                     "An occurrence keeps its series' all-day setting.",
@@ -667,15 +680,28 @@ pub async fn update_event(
                 },
             )
             .await?;
-            let later: Vec<exceptions::Model> = exceptions::Entity::find()
+            // The occurrence being edited is the new series' first one, as the form now says it:
+            // its old exception goes. Later ones follow the new series, unless it changed between
+            // timed and all-day, where their keys no longer name anything.
+            let kind_changed = event.all_day != all_day;
+            for row in exceptions::Entity::find()
                 .filter(exceptions::Column::EventId.eq(event.id))
                 .all(&txn)
                 .await?
-                .into_iter()
-                .filter(|row| RecurrenceId::from_key(&row.recurrence_id).is_some_and(|id| id >= at))
-                .collect();
-            for row in later {
-                rekey(&txn, row, new_event.id, shift).await?;
+            {
+                let Some(id) = RecurrenceId::from_key(&row.recurrence_id) else {
+                    continue;
+                };
+                if id < at {
+                    continue;
+                }
+                if id == at || kind_changed {
+                    exceptions::Entity::delete_by_id((row.event_id, row.recurrence_id))
+                        .exec(&txn)
+                        .await?;
+                } else {
+                    rekey(&txn, row, new_event.id, shift).await?;
+                }
             }
             // Everyone's choice of reminder for the series carries over.
             for pref in calendar_event_reminders::Entity::find()
@@ -802,6 +828,11 @@ pub async fn delete_event(
         }
         EditScope::This => {
             let id = required_recurrence_id(&query)?;
+            if !names_an_occurrence(&event, &id)? {
+                return Err(CalendarError::Invalid(
+                    "This occurrence is not one of the series.",
+                ));
+            }
             exceptions::Entity::insert(exceptions::ActiveModel {
                 event_id: Set(event.id),
                 recurrence_id: Set(id.to_key()),

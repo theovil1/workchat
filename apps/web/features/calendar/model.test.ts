@@ -1,7 +1,7 @@
 // Run with `pnpm --filter @ruchoir/web test` (Node's own runner, types stripped by Node).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inFilter, layoutDay, localDay, occursOn, rangeFor, zonedTime } from "./model.ts";
+import { inFilter, layoutDay, localDay, MIN_HEIGHT, occursOn, rangeFor, zonedTime } from "./model.ts";
 
 const PARIS = "Europe/Paris";
 
@@ -28,7 +28,7 @@ test("a short or overnight event stays readable on its day", () => {
     { id: "night", allDay: false, start: "2026-10-20T20:00:00Z", end: "2026-10-21T06:00:00Z" },
   ];
   const laid = Object.fromEntries(layoutDay(items, "2026-10-20", PARIS).map((p) => [p.item.id, p]));
-  assert.equal(laid.short.height, 15);
+  assert.equal(laid.short.height, MIN_HEIGHT);
   // 22:00 to midnight on the 20th.
   assert.deepEqual([laid.night.top, laid.night.height], [1320, 120]);
   const next = layoutDay(items, "2026-10-21", PARIS);
@@ -86,4 +86,17 @@ test("an occurrence is on every local day it touches", () => {
   assert.deepEqual(["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"].map((d) => occursOn(leave, d, PARIS)), [false, true, true, false]);
   const instant = { allDay: false, start: "2026-10-20T07:00:00Z", end: "2026-10-20T07:00:00Z" };
   assert.equal(occursOn(instant, "2026-10-20", PARIS), true);
+});
+
+test("short events drawn at their minimum height never overlap", () => {
+  // 9:00-9:10 and 9:15-9:30: each is drawn taller than it lasts, so they must sit side by side.
+  const items = [
+    { id: "a", allDay: false, start: "2026-10-20T07:00:00Z", end: "2026-10-20T07:10:00Z" },
+    { id: "b", allDay: false, start: "2026-10-20T07:15:00Z", end: "2026-10-20T07:30:00Z" },
+  ];
+  const laid = layoutDay(items, "2026-10-20", PARIS);
+  for (const p of laid) assert.ok(p.height >= MIN_HEIGHT);
+  assert.deepEqual(laid.map((p) => [p.item.id, p.column, p.columns]), [["a", 0, 2], ["b", 1, 2]]);
+  // The grid draws an hour 48 px tall: the minimum is what a title needs (18 px).
+  assert.ok((MIN_HEIGHT / 60) * 48 >= 18);
 });

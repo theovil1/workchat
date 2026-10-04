@@ -37,6 +37,8 @@ export type Occurrence = {
   recurrenceId?: string;
   title: string;
   location?: string;
+  /** The occurrence's notes: its own when it was changed apart, else the series'. */
+  description?: string;
   allDay: boolean;
   /** RFC 3339 (UTC) for a timed occurrence, `YYYY-MM-DD` for an all-day one. */
   start: string;
@@ -49,7 +51,6 @@ export type Occurrence = {
 };
 
 export type CalendarEvent = Occurrence & {
-  description?: string;
   rrule?: string;
   createdBy?: string;
   updatedAt: string;
@@ -102,6 +103,7 @@ type OccurrenceDto = {
   recurrence_id?: string | null;
   title: string;
   location?: string | null;
+  description?: string | null;
   all_day: boolean;
   start: string;
   end: string;
@@ -113,7 +115,6 @@ type OccurrenceDto = {
 };
 
 type EventDto = OccurrenceDto & {
-  description?: string | null;
   rrule?: string | null;
   created_by?: string | null;
   updated_at: string;
@@ -149,6 +150,7 @@ function toOccurrence(dto: OccurrenceDto): Occurrence {
     recurrenceId: opt(dto.recurrence_id),
     title: dto.title,
     location: opt(dto.location),
+    description: opt(dto.description),
     allDay: dto.all_day,
     start: dto.start,
     end: dto.end,
@@ -163,7 +165,6 @@ function toOccurrence(dto: OccurrenceDto): Occurrence {
 function toEvent(dto: EventDto): CalendarEvent {
   return {
     ...toOccurrence(dto),
-    description: opt(dto.description),
     rrule: opt(dto.rrule),
     createdBy: opt(dto.created_by),
     updatedAt: dto.updated_at,

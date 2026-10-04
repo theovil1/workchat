@@ -144,7 +144,7 @@ export function EventDetails({
             <span>{occurrence.location}</span>
           </div>
         ) : null}
-        {event?.description ? <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--text-body)", fontSize: "var(--text-sm)" }}>{event.description}</p> : null}
+        {occurrence.description ? <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--text-body)", fontSize: "var(--text-sm)" }}>{occurrence.description}</p> : null}
         <Field label={t("calendar.myReminder")} htmlFor="details-reminder">
           <Select
             id="details-reminder"

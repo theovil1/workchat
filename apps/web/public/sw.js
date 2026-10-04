@@ -141,7 +141,7 @@ async function onClick(data) {
   const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
   if (open) {
     await open.focus();
-    if (data && data.conversationId) open.postMessage({ type: "ruchoir:open-notification", ...data });
+    if (data && (data.conversationId || data.eventId)) open.postMessage({ type: "ruchoir:open-notification", ...data });
     return;
   }
   const target =

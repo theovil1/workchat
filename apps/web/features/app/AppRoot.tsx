@@ -63,6 +63,7 @@ import {
   setMyPresence as apiSetMyPresence,
   setReadCursor,
   type ApiNotification,
+  type ReminderInfo,
   type Member,
   type MfaMethod,
   type RealtimeConnection,
@@ -540,6 +541,8 @@ function AppShell() {
   // A notification clicked in the system tray, waiting for its space and conversation to be loaded
   // before it can be opened (see the effect that consumes it).
   const [pendingOpen, setPendingOpen] = useState<PushTarget | null>(null);
+  // The event a clicked reminder points at: the calendar opens on its day, with its details.
+  const [calendarFocus, setCalendarFocus] = useState<(ReminderInfo & { at: number }) | null>(null);
   // The notification level of the space on screen, being set.
   const [spaceNotifOpen, setSpaceNotifOpen] = useState(false);
   // A link to another site, held until the warning about leaving Ruchoir is answered.
@@ -2568,8 +2571,10 @@ function AppShell() {
   /** Open a notification: mark it read, then jump to its source message. */
   const openNotification = (targetChannel: string, messageId: string, id: string) => {
     setNotifRead(id, true);
-    // A calendar reminder has no conversation: it opens the calendar.
+    // A calendar reminder has no conversation: it opens its event in the calendar.
     if (!targetChannel) {
+      const reminder = notifs.find((n) => n.id === id)?.reminder;
+      if (reminder) setCalendarFocus({ ...reminder, at: Date.now() });
       if (compact) {
         setMobileContent(false);
         setMobileTab("calendar");
@@ -3354,6 +3359,12 @@ function AppShell() {
     pushOpenRef.current = () => {
       const target = pendingOpen;
       if (!target || authStage !== "app" || switchingSpace) return;
+      // A calendar reminder opens its event, whatever space is on screen.
+      if (target.eventId && !target.conversationId) {
+        setPendingOpen(null);
+        openNotification("", "", target.id);
+        return;
+      }
       if (target.spaceId && target.spaceId !== ws && workspaces.some((w) => w.id === target.spaceId)) {
         void switchWorkspace(target.spaceId);
         return;
@@ -4062,7 +4073,8 @@ function AppShell() {
       ) : null}
       {contentView === "calendar" ? (
         <CalendarScreen
-          key={ws}
+          key={`${ws}:${calendarFocus?.at ?? ""}`}
+          focus={calendarFocus ?? undefined}
           compact={compact}
           timeZone={viewerTimeZone}
           spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
@@ -4512,6 +4524,8 @@ function AppShell() {
         ) : null}
         {mobileTab === "calendar" ? (
           <CalendarScreen
+            key={calendarFocus?.at ?? ""}
+            focus={calendarFocus ?? undefined}
             compact
             timeZone={viewerTimeZone}
             spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
