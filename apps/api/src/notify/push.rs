@@ -365,7 +365,7 @@ pub async fn pending(
         .unwrap_or(None);
 
     let user_prefs = prefs::load(&state.db, session.user_id).await?;
-    let conversation_ids: Vec<Uuid> = rows.iter().map(|row| row.conversation_id).collect();
+    let conversation_ids: Vec<Uuid> = rows.iter().filter_map(|row| row.conversation_id).collect();
     let conversation_prefs = prefs::scopes(&state.db, session.user_id, &conversation_ids).await?;
     let shown: Vec<notifications::Model> = rows
         .into_iter()
@@ -373,7 +373,8 @@ pub async fn pending(
             prefs::allows(
                 &row.kind,
                 &user_prefs,
-                conversation_prefs.get(&row.conversation_id),
+                row.conversation_id
+                    .and_then(|id| conversation_prefs.get(&id)),
                 prefs::Delivery::App,
             )
         })
@@ -467,7 +468,8 @@ async fn deliver(state: &AppState, rows: Vec<notifications::Model>) -> Result<()
         if !prefs::may_interrupt(&user_prefs, user.manual_presence.as_deref(), now) {
             continue;
         }
-        let conversation_ids: Vec<Uuid> = rows.iter().map(|row| row.conversation_id).collect();
+        let conversation_ids: Vec<Uuid> =
+            rows.iter().filter_map(|row| row.conversation_id).collect();
         let conversation_prefs = prefs::scopes(&state.db, user_id, &conversation_ids).await?;
         let allowed: Vec<&notifications::Model> = rows
             .iter()
@@ -475,7 +477,8 @@ async fn deliver(state: &AppState, rows: Vec<notifications::Model>) -> Result<()
                 prefs::allows(
                     &row.kind,
                     &user_prefs,
-                    conversation_prefs.get(&row.conversation_id),
+                    row.conversation_id
+                        .and_then(|id| conversation_prefs.get(&id)),
                     prefs::Delivery::App,
                 )
             })

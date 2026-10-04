@@ -15,8 +15,12 @@
 use ruchoir_migration::{Migrator, MigratorTrait};
 use sea_orm::Database;
 
+/// Both tests rebuild the same throwaway database: they take turns.
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn migrations_apply_and_revert_cleanly() {
+    let _turn = ONE_AT_A_TIME.lock().await;
     let Ok(url) = std::env::var("RUCHOIR_TEST_DATABASE_URL") else {
         eprintln!("skipping migrations_round_trip: RUCHOIR_TEST_DATABASE_URL not set");
         return;
@@ -45,4 +49,112 @@ async fn migrations_apply_and_revert_cleanly() {
     Migrator::up(&db, None)
         .await
         .expect("re-apply all migrations again");
+}
+
+/// The calendar migration gives every space that already exists its default calendar, named in the
+/// language of the space's owner.
+#[tokio::test]
+async fn existing_spaces_receive_a_default_calendar() {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+    let _turn = ONE_AT_A_TIME.lock().await;
+
+    let Ok(url) = std::env::var("RUCHOIR_TEST_DATABASE_URL") else {
+        eprintln!("skipping existing_spaces_receive_a_default_calendar: RUCHOIR_TEST_DATABASE_URL not set");
+        return;
+    };
+    let db = Database::connect(url)
+        .await
+        .expect("connect to the test database");
+    Migrator::fresh(&db).await.expect("fresh apply");
+    // Step back to just before the calendar arrived, and fill the instance as it was then.
+    let applied = Migrator::get_applied_migrations(&db)
+        .await
+        .expect("applied");
+    let calendar_steps = applied
+        .iter()
+        .rev()
+        .take_while(|m| m.name() != "m20261003_000003_file_stars")
+        .count();
+    Migrator::down(&db, Some(calendar_steps as u32))
+        .await
+        .expect("revert the calendar");
+
+    let people = [
+        (
+            "00000000-0000-0000-0000-0000000000a1",
+            "fr",
+            "00000000-0000-0000-0000-0000000000b1",
+        ),
+        (
+            "00000000-0000-0000-0000-0000000000a2",
+            "de",
+            "00000000-0000-0000-0000-0000000000b2",
+        ),
+        // No language chosen: English.
+        (
+            "00000000-0000-0000-0000-0000000000a3",
+            "",
+            "00000000-0000-0000-0000-0000000000b3",
+        ),
+    ];
+    for (user, locale, space) in people {
+        let sql_locale = if locale.is_empty() {
+            "NULL".to_owned()
+        } else {
+            format!("'{locale}'")
+        };
+        let slug = if locale.is_empty() { "none" } else { locale };
+        db.execute_unprepared(&format!(
+            "INSERT INTO users (id, email, display_name, status, mfa_enforced, is_instance_admin, \
+                                is_bot, locale, created_at, updated_at) \
+             VALUES ('{user}', '{user}@example.test', 'Owner', 'active', false, false, false, \
+                     {sql_locale}, now(), now()); \
+             INSERT INTO spaces (id, name, slug, created_at, updated_at) \
+             VALUES ('{space}', 'Space', 'space-{slug}', now(), now()); \
+             INSERT INTO space_members (space_id, user_id, role, joined_at) \
+             VALUES ('{space}', '{user}', 'owner', now());"
+        ))
+        .await
+        .expect("seed a space");
+    }
+
+    Migrator::up(&db, None).await.expect("apply the calendar");
+    let rows = db
+        .query_all_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT s.slug, c.name, c.color, c.write_access, c.default_reminder_minutes \
+             FROM calendars c JOIN spaces s ON s.id = c.space_id \
+             WHERE c.is_default ORDER BY s.slug;",
+        ))
+        .await
+        .expect("read calendars");
+    let found: Vec<(String, String, String, String, Option<i32>)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.try_get("", "slug").unwrap(),
+                r.try_get("", "name").unwrap(),
+                r.try_get("", "color").unwrap(),
+                r.try_get("", "write_access").unwrap(),
+                r.try_get("", "default_reminder_minutes").unwrap(),
+            )
+        })
+        .collect();
+    let expected = |slug: &str, name: &str| {
+        (
+            slug.to_owned(),
+            name.to_owned(),
+            "mint".to_owned(),
+            "members".to_owned(),
+            Some(10),
+        )
+    };
+    assert_eq!(
+        found,
+        vec![
+            expected("space-de", "Allgemein"),
+            expected("space-fr", "Général"),
+            expected("space-none", "General"),
+        ]
+    );
 }

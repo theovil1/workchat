@@ -50,6 +50,8 @@ sea-orm = { version = "2.0.2", default-features = false, features = [
     "macros",
     "with-uuid",
     "with-time",
+    "with-json",
+    "postgres-array",
 ] }
 sea-orm-migration = { version = "2.0.2", default-features = false, features = [
     "sqlx-postgres",

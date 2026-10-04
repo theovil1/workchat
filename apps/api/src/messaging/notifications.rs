@@ -102,8 +102,10 @@ pub async fn create_for_message(
             id: Set(Uuid::new_v4()),
             user_id: Set(*user_id),
             kind: Set((*kind).to_owned()),
-            conversation_id: Set(conversation_id),
-            message_id: Set(message_id),
+            conversation_id: Set(Some(conversation_id)),
+            message_id: Set(Some(message_id)),
+            event_id: Set(None),
+            occurrence_start: Set(None),
             actor_id: Set(Some(actor_id)),
             created_at: Set(now),
             read_at: Set(None),
@@ -133,11 +135,20 @@ pub async fn hydrate<C: ConnectionTrait>(
     db: &C,
     rows: Vec<notifications::Model>,
 ) -> Result<Vec<NotificationDto>, ApiError> {
+    // Only notifications about a message are drawn here; a calendar reminder has neither a
+    // conversation nor a message.
+    let rows: Vec<(notifications::Model, Uuid, Uuid)> = rows
+        .into_iter()
+        .filter_map(|r| {
+            let (conversation_id, message_id) = (r.conversation_id?, r.message_id?);
+            Some((r, conversation_id, message_id))
+        })
+        .collect();
     if rows.is_empty() {
         return Ok(Vec::new());
     }
 
-    let message_ids: Vec<Uuid> = rows.iter().map(|r| r.message_id).collect();
+    let message_ids: Vec<Uuid> = rows.iter().map(|(_, _, m)| *m).collect();
     let bodies: HashMap<Uuid, String> = messages::Entity::find()
         .filter(messages::Column::Id.is_in(message_ids))
         .all(db)
@@ -151,10 +162,10 @@ pub async fn hydrate<C: ConnectionTrait>(
     // shown everywhere.
     // Where each one happened, in words: shared with the saved list, which needs exactly the same
     // thing for exactly the same reason.
-    let conversation_ids: Vec<Uuid> = rows.iter().map(|r| r.conversation_id).collect();
+    let conversation_ids: Vec<Uuid> = rows.iter().map(|(_, c, _)| *c).collect();
     let labels = super::conversations::label_conversations(db, conversation_ids).await?;
 
-    let actor_ids: Vec<Uuid> = rows.iter().filter_map(|r| r.actor_id).collect();
+    let actor_ids: Vec<Uuid> = rows.iter().filter_map(|(r, _, _)| r.actor_id).collect();
     let names: HashMap<Uuid, String> = if actor_ids.is_empty() {
         HashMap::new()
     } else {
@@ -169,9 +180,9 @@ pub async fn hydrate<C: ConnectionTrait>(
 
     Ok(rows
         .into_iter()
-        .map(|r| NotificationDto {
+        .map(|(r, conversation_id, message_id)| NotificationDto {
             preview: bodies
-                .get(&r.message_id)
+                .get(&message_id)
                 .map(|b| preview(b))
                 .unwrap_or_default(),
             actor_name: r.actor_id.and_then(|id| names.get(&id).cloned()),
@@ -180,18 +191,18 @@ pub async fn hydrate<C: ConnectionTrait>(
             id: r.id,
             kind: r.kind,
             space_id: labels
-                .get(&r.conversation_id)
+                .get(&conversation_id)
                 .map(|l| l.space_id)
                 .unwrap_or_default(),
             channel_name: labels
-                .get(&r.conversation_id)
+                .get(&conversation_id)
                 .and_then(|l| l.channel_name.clone()),
             space_name: labels
-                .get(&r.conversation_id)
+                .get(&conversation_id)
                 .map(|l| l.space_name.clone())
                 .unwrap_or_default(),
-            conversation_id: r.conversation_id,
-            message_id: r.message_id,
+            conversation_id,
+            message_id,
             actor_id: r.actor_id,
         })
         .collect())
