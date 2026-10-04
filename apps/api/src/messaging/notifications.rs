@@ -136,15 +136,23 @@ pub async fn hydrate<C: ConnectionTrait>(
     db: &C,
     rows: Vec<notifications::Model>,
 ) -> Result<Vec<NotificationDto>, ApiError> {
-    // Calendar reminders are drawn by the calendar, which knows their events; the rest are about a
-    // message. Both come back in the order they were asked for.
+    // Calendar reminders and invitations are drawn by the calendar, which knows their events; the
+    // rest are about a message. Both come back in the order they were asked for.
     let order: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     let (reminder_rows, rows): (Vec<_>, Vec<_>) = rows
         .into_iter()
         .partition(|r| r.kind == "calendar_reminder");
+    let (invitation_rows, rows): (Vec<_>, Vec<_>) = rows
+        .into_iter()
+        .partition(|r| crate::notify::prefs::is_invitation_kind(&r.kind));
     let mut drawn = crate::calendar::reminders::hydrate(db, reminder_rows)
         .await
         .map_err(|_| ApiError::Internal)?;
+    drawn.extend(
+        crate::calendar::invitations::hydrate(db, invitation_rows)
+            .await
+            .map_err(|_| ApiError::Internal)?,
+    );
     let rows: Vec<(notifications::Model, Uuid, Uuid)> = rows
         .into_iter()
         .filter_map(|r| {
@@ -215,6 +223,8 @@ pub async fn hydrate<C: ConnectionTrait>(
             event_all_day: None,
             event_location: None,
             calendar_name: None,
+            event_changes: None,
+            event_my_status: None,
         }
     }));
     Ok(in_order(drawn, &order))

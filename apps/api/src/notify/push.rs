@@ -418,6 +418,8 @@ pub async fn pending(
             let (title, body) = if dto.kind == "calendar_reminder" {
                 let texts = crate::calendar::reminders::texts(locale, &dto, now, &zone);
                 (texts.title, texts.body)
+            } else if prefs::is_invitation_kind(&dto.kind) {
+                crate::calendar::invitations::texts(locale, &dto, &zone)
             } else {
                 tray_text(locale, &dto)
             };

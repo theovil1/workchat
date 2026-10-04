@@ -290,6 +290,13 @@ pub fn new_token(key: &[u8; 32]) -> Result<(String, String, Vec<u8>, Vec<u8>), C
     Ok((raw, digest, cipher, nonce))
 }
 
+/// The token of someone invited by address, read back from its encrypted copy.
+pub fn token_of(key: &[u8; 32], row: &attendees::Model) -> Option<String> {
+    let (cipher, nonce) = (row.token_cipher.as_ref()?, row.token_nonce.as_ref()?);
+    let plain = crate::auth::crypto::decrypt(key, cipher, nonce).ok()?;
+    String::from_utf8(plain.to_vec()).ok()
+}
+
 async fn insert_row<C: ConnectionTrait>(
     db: &C,
     event_id: Uuid,

@@ -506,7 +506,7 @@ async fn with_attendees_only_they_are_reminded() {
     let bob = app.cookie_for(fx.bob).await;
     let general = space_default(&app, &alice, fx.space_id).await;
     let mine = personal_of(&app, &alice).await;
-    let now = sweep_moment(12);
+    let now = sweep_moment(21);
     let bob_only = json!([{ "user_id": fx.bob }]);
 
     // A space event with attendees: its organiser and its attendees, not the rest of the space.
@@ -714,4 +714,117 @@ async fn freebusy_hides_titles_and_strangers() {
 
     // Someone sharing no space with the caller is not anyone's business.
     assert_eq!(freebusy(&app, &alice, json!([dave])).await.status(), 403);
+}
+
+/// The calendar notifications in someone's inbox, newest first, as (kind, title, actor).
+async fn calendar_inbox(app: &TestApp, cookie: &str) -> Vec<Value> {
+    let inbox: Value = app
+        .req(reqwest::Method::GET, "/api/v1/notifications", cookie)
+        .send()
+        .await
+        .expect("inbox")
+        .json()
+        .await
+        .expect("json");
+    inbox["notifications"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|n| {
+            n["kind"]
+                .as_str()
+                .is_some_and(|k| k.starts_with("calendar_") && k != "calendar_reminder")
+        })
+        .cloned()
+        .collect()
+}
+
+fn kinds(inbox: &[Value]) -> Vec<String> {
+    inbox
+        .iter()
+        .map(|n| n["kind"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn notifications_follow_invitations() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let carol = app.cookie_for(fx.carol).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+
+    let created: Value = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        meeting("Revue", json!([{ "user_id": fx.bob }, { "user_id": fx.carol }, { "email": "client@outside.test" }])),
+    )
+    .await
+    .json()
+    .await
+    .expect("json");
+    let id = &created["event_id"];
+
+    // Invited: the attendees are told, never the one who invited them.
+    let bobs = calendar_inbox(&app, &bob).await;
+    assert_eq!(kinds(&bobs), vec!["calendar_invitation"]);
+    assert_eq!(bobs[0]["event_title"], "Revue");
+    assert_eq!(bobs[0]["actor_name"], "alice");
+    assert_eq!(bobs[0]["event_id"], *id);
+    assert_eq!(bobs[0]["event_my_status"], "needs_action");
+    assert_eq!(bobs[0]["space_id"], fx.space_id.to_string());
+    assert!(calendar_inbox(&app, &alice).await.is_empty());
+
+    // Declining tells the organiser, and only them.
+    respond(&app, &carol, id, json!({ "status": "declined" })).await;
+    respond(&app, &bob, id, json!({ "status": "accepted" })).await;
+    let alices = calendar_inbox(&app, &alice).await;
+    assert_eq!(kinds(&alices), vec!["calendar_declined"]);
+    assert_eq!(alices[0]["actor_name"], "carol");
+    assert_eq!(
+        kinds(&calendar_inbox(&app, &bob).await),
+        vec!["calendar_invitation"]
+    );
+    // The inbox shows each one's answer as it stands now.
+    assert_eq!(
+        calendar_inbox(&app, &bob).await[0]["event_my_status"],
+        "accepted"
+    );
+
+    // A new time reaches those who did not decline.
+    let mut moved = meeting(
+        "Revue",
+        json!([{ "user_id": fx.bob }, { "user_id": fx.carol }, { "email": "client@outside.test" }]),
+    );
+    moved["start"] = json!("2026-10-20T09:00:00Z");
+    moved["end"] = json!("2026-10-20T10:00:00Z");
+    assert_eq!(edit(&app, &alice, id, "", moved).await.status(), 200);
+    let bobs = calendar_inbox(&app, &bob).await;
+    assert_eq!(kinds(&bobs), vec!["calendar_update", "calendar_invitation"]);
+    assert_eq!(bobs[0]["event_changes"], json!(["time"]));
+    assert_eq!(bobs[0]["event_start"], "2026-10-20T09:00:00Z");
+    assert_eq!(
+        kinds(&calendar_inbox(&app, &carol).await),
+        vec!["calendar_invitation"]
+    );
+
+    // Taken off the list: told it is off for them.
+    let mut fewer = meeting("Revue", json!([{ "user_id": fx.carol }]));
+    fewer["start"] = json!("2026-10-20T09:00:00Z");
+    fewer["end"] = json!("2026-10-20T10:00:00Z");
+    assert_eq!(edit(&app, &alice, id, "", fewer).await.status(), 200);
+    assert_eq!(
+        calendar_inbox(&app, &bob).await[0]["kind"],
+        "calendar_cancel"
+    );
+
+    // Deleted: whoever had not declined is told, and the notice outlives the event.
+    respond(&app, &carol, id, json!({ "status": "tentative" })).await;
+    assert_eq!(remove(&app, &alice, id, "").await, 204);
+    let carols = calendar_inbox(&app, &carol).await;
+    assert_eq!(carols[0]["kind"], "calendar_cancel");
+    assert_eq!(carols[0]["event_title"], "Revue");
+    assert_eq!(carols[0]["actor_name"], "alice");
 }

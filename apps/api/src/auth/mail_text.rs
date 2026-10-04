@@ -74,6 +74,17 @@ pub struct Email {
     pub subject: String,
     pub text: String,
     pub html: String,
+    /// An iCalendar object to attach (an invitation, its change or its cancellation), with its
+    /// `METHOD`: mail clients offer to add it to the reader's calendar.
+    pub calendar: Option<CalendarPart>,
+}
+
+/// An `.ics` attachment.
+#[derive(Debug, Clone)]
+pub struct CalendarPart {
+    /// `REQUEST` or `CANCEL`.
+    pub method: &'static str,
+    pub body: String,
 }
 
 /// The `Content-ID` the HTML refers to for the Ruchoir mark, which travels inside the message.
@@ -609,12 +620,16 @@ fn render(locale: Locale, content: &Content, instance: &str) -> Email {
     } else {
         format!("{}\n\n{}", content.paragraph, items_text.trim_end())
     };
+    // A message with nothing to open (a cancellation sent outside) has no button.
+    let action_text = if content.link.is_empty() {
+        String::new()
+    } else {
+        format!("{} :\n{}\n\n", content.button, content.link)
+    };
     let text = format!(
-        "{heading}\n\n{paragraph}\n\n{button} :\n{link}\n\n{note}\n\n-- \nRuchoir. {tagline}\n{sent_by} {instance}",
+        "{heading}\n\n{paragraph}\n\n{action_text}{note}\n\n-- \nRuchoir. {tagline}\n{sent_by} {instance}",
         heading = content.heading,
         paragraph = paragraph_text,
-        button = content.button,
-        link = content.link,
         note = content.note,
         tagline = common.tagline,
         sent_by = common.sent_by,
@@ -663,6 +678,21 @@ fn render(locale: Locale, content: &Content, instance: &str) -> Email {
             r#"<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;border:1px solid {BORDER};border-left:3px solid {TERRACOTTA};border-radius:8px;background:{CREAM};">{rows}</table>"#
         )
     };
+    let action_html = if content.link.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rc-button-table"><tr>
+<td align="center" bgcolor="{TERRACOTTA}" class="rc-button" style="border-radius:8px;">
+<a href="{link}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:{FONT};font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">{button}</a>
+</td></tr></table>
+<p style="margin:28px 0 6px 0;font-family:{FONT};font-size:13px;line-height:1.5;color:{MUTED};">{fallback}</p>
+<p style="margin:0 0 24px 0;font-family:{FONT};font-size:13px;line-height:1.5;word-break:break-all;"><a href="{link}" target="_blank" style="color:{TERRACOTTA};text-decoration:underline;">{link}</a></p>
+"#,
+            button = esc(&content.button),
+            fallback = esc(common.fallback),
+        )
+    };
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="{lang}">
@@ -696,13 +726,7 @@ fn render(locale: Locale, content: &Content, instance: &str) -> Email {
 <h1 class="rc-title" style="margin:0 0 14px 0;font-family:{FONT};font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-0.01em;color:{INK};">{heading}</h1>
 <p style="margin:0 0 28px 0;font-family:{FONT};font-size:15px;line-height:1.6;color:{BODY};">{paragraph}</p>
 {items_html}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rc-button-table"><tr>
-<td align="center" bgcolor="{TERRACOTTA}" class="rc-button" style="border-radius:8px;">
-<a href="{link}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:{FONT};font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">{button}</a>
-</td></tr></table>
-<p style="margin:28px 0 6px 0;font-family:{FONT};font-size:13px;line-height:1.5;color:{MUTED};">{fallback}</p>
-<p style="margin:0 0 24px 0;font-family:{FONT};font-size:13px;line-height:1.5;word-break:break-all;"><a href="{link}" target="_blank" style="color:{TERRACOTTA};text-decoration:underline;">{link}</a></p>
-<p style="margin:0;padding-top:20px;border-top:1px solid {BORDER};font-family:{FONT};font-size:13px;line-height:1.55;color:{MUTED};">{note}</p>
+{action_html}<p style="margin:0;padding-top:20px;border-top:1px solid {BORDER};font-family:{FONT};font-size:13px;line-height:1.55;color:{MUTED};">{note}</p>
 </td></tr>
 <tr><td align="center" style="padding:24px 16px 0 16px;font-family:{FONT};font-size:12px;line-height:1.6;color:{MUTED};">
 <span style="color:{INK};font-weight:600;">Ruchoir.</span> {tagline}<br>
@@ -718,8 +742,6 @@ fn render(locale: Locale, content: &Content, instance: &str) -> Email {
         preheader = esc(&content.preheader),
         heading = esc(&content.heading),
         paragraph = esc(&content.paragraph),
-        button = esc(&content.button),
-        fallback = esc(common.fallback),
         note = esc(&content.note),
         tagline = esc(common.tagline),
         sent_by = esc(common.sent_by),
@@ -730,7 +752,170 @@ fn render(locale: Locale, content: &Content, instance: &str) -> Email {
         subject: content.subject.clone(),
         text,
         html,
+        calendar: None,
     }
+}
+
+/// What an invitation mail is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvitationMail {
+    /// Someone was invited.
+    Invited,
+    /// The event's time or place changed.
+    Updated,
+    /// It was cancelled, or the reader taken off its list.
+    Cancelled,
+    /// An attendee declined (to the organiser).
+    Declined,
+}
+
+/// The words of an invitation mail, filled in.
+#[derive(Clone)]
+pub struct InvitationWords<'a> {
+    pub kind: InvitationMail,
+    /// Who did it: the organiser, or the attendee who declined.
+    pub actor: &'a str,
+    pub title: &'a str,
+    /// "20/10 10:00", in the reader's language and zone.
+    pub when: &'a str,
+    pub location: Option<&'a str>,
+    /// Where the button leads: the calendar for a member, the answer page for someone outside; empty
+    /// for no button.
+    pub link: &'a str,
+    /// Whether the reader has no account (answers through the link, adds the attached file).
+    pub external: bool,
+}
+
+/// Fill `{actor}`, `{title}`, `{when}`, `{place}`.
+fn fill(template: &str, words: &InvitationWords<'_>, place: &str) -> String {
+    template
+        .replace("{actor}", words.actor)
+        .replace("{title}", words.title)
+        .replace("{when}", words.when)
+        .replace("{place}", place)
+}
+
+/// The subject (and push title) of an invitation kind: "Invitation : Revue".
+pub fn invitation_subject(
+    locale: Locale,
+    kind: InvitationMail,
+    actor: &str,
+    title: &str,
+) -> String {
+    let template = match (locale, kind) {
+        (Locale::Fr, InvitationMail::Invited) => "Invitation\u{a0}: {title}",
+        (Locale::Fr, InvitationMail::Updated) => "Modifié\u{a0}: {title}",
+        (Locale::Fr, InvitationMail::Cancelled) => "Annulé\u{a0}: {title}",
+        (Locale::Fr, InvitationMail::Declined) => "{actor} a refusé\u{a0}: {title}",
+        (Locale::En, InvitationMail::Invited) => "Invitation: {title}",
+        (Locale::En, InvitationMail::Updated) => "Changed: {title}",
+        (Locale::En, InvitationMail::Cancelled) => "Cancelled: {title}",
+        (Locale::En, InvitationMail::Declined) => "{actor} declined: {title}",
+        (Locale::Es, InvitationMail::Invited) => "Invitación: {title}",
+        (Locale::Es, InvitationMail::Updated) => "Modificado: {title}",
+        (Locale::Es, InvitationMail::Cancelled) => "Cancelado: {title}",
+        (Locale::Es, InvitationMail::Declined) => "{actor} ha rechazado: {title}",
+        (Locale::De, InvitationMail::Invited) => "Einladung: {title}",
+        (Locale::De, InvitationMail::Updated) => "Geändert: {title}",
+        (Locale::De, InvitationMail::Cancelled) => "Abgesagt: {title}",
+        (Locale::De, InvitationMail::Declined) => "{actor} hat abgelehnt: {title}",
+        (Locale::It, InvitationMail::Invited) => "Invito: {title}",
+        (Locale::It, InvitationMail::Updated) => "Modificato: {title}",
+        (Locale::It, InvitationMail::Cancelled) => "Annullato: {title}",
+        (Locale::It, InvitationMail::Declined) => "{actor} ha rifiutato: {title}",
+        (Locale::Pl, InvitationMail::Invited) => "Zaproszenie: {title}",
+        (Locale::Pl, InvitationMail::Updated) => "Zmiana: {title}",
+        (Locale::Pl, InvitationMail::Cancelled) => "Odwołane: {title}",
+        (Locale::Pl, InvitationMail::Declined) => "{actor} odrzuca: {title}",
+    };
+    template.replace("{actor}", actor).replace("{title}", title)
+}
+
+/// An invitation, a change, a cancellation or a refusal, by mail.
+pub fn calendar_invitation(locale: Locale, words: &InvitationWords<'_>, instance: &str) -> Email {
+    use InvitationMail::{Cancelled, Declined, Invited, Updated};
+    let place = words
+        .location
+        .map(|l| format!(" · {l}"))
+        .unwrap_or_default();
+    let paragraph = match (locale, words.kind) {
+        (Locale::Fr, Invited) => "{actor} vous invite à «\u{a0}{title}\u{a0}», {when}{place}.",
+        (Locale::Fr, Updated) => {
+            "{actor} a modifié «\u{a0}{title}\u{a0}»\u{a0}: c'est maintenant {when}{place}."
+        }
+        (Locale::Fr, Cancelled) => "{actor} a annulé «\u{a0}{title}\u{a0}» ({when}).",
+        (Locale::Fr, Declined) => {
+            "{actor} a refusé votre invitation à «\u{a0}{title}\u{a0}» ({when})."
+        }
+        (Locale::En, Invited) => "{actor} invites you to \u{201c}{title}\u{201d}, {when}{place}.",
+        (Locale::En, Updated) => {
+            "{actor} changed \u{201c}{title}\u{201d}: it is now {when}{place}."
+        }
+        (Locale::En, Cancelled) => "{actor} cancelled \u{201c}{title}\u{201d} ({when}).",
+        (Locale::En, Declined) => {
+            "{actor} declined your invitation to \u{201c}{title}\u{201d} ({when})."
+        }
+        (Locale::Es, Invited) => "{actor} te invita a «{title}», {when}{place}.",
+        (Locale::Es, Updated) => "{actor} ha modificado «{title}»: ahora es {when}{place}.",
+        (Locale::Es, Cancelled) => "{actor} ha cancelado «{title}» ({when}).",
+        (Locale::Es, Declined) => "{actor} ha rechazado tu invitación a «{title}» ({when}).",
+        (Locale::De, Invited) => "{actor} lädt Sie zu \u{201e}{title}\u{201c} ein, {when}{place}.",
+        (Locale::De, Updated) => {
+            "{actor} hat \u{201e}{title}\u{201c} geändert: jetzt {when}{place}."
+        }
+        (Locale::De, Cancelled) => "{actor} hat \u{201e}{title}\u{201c} abgesagt ({when}).",
+        (Locale::De, Declined) => {
+            "{actor} hat Ihre Einladung zu \u{201e}{title}\u{201c} abgelehnt ({when})."
+        }
+        (Locale::It, Invited) => "{actor} ti invita a «{title}», {when}{place}.",
+        (Locale::It, Updated) => "{actor} ha modificato «{title}»: ora è {when}{place}.",
+        (Locale::It, Cancelled) => "{actor} ha annullato «{title}» ({when}).",
+        (Locale::It, Declined) => "{actor} ha rifiutato il tuo invito a «{title}» ({when}).",
+        (Locale::Pl, Invited) => "{actor} zaprasza Cię na \u{201e}{title}\u{201d}, {when}{place}.",
+        (Locale::Pl, Updated) => "{actor} zmienia \u{201e}{title}\u{201d}: teraz {when}{place}.",
+        (Locale::Pl, Cancelled) => "{actor} odwołuje \u{201e}{title}\u{201d} ({when}).",
+        (Locale::Pl, Declined) => {
+            "{actor} odrzuca Twoje zaproszenie na \u{201e}{title}\u{201d} ({when})."
+        }
+    };
+    let (open, reply) = match locale {
+        Locale::Fr => ("Ouvrir l'agenda", "Répondre"),
+        Locale::En => ("Open the calendar", "Reply"),
+        Locale::Es => ("Abrir el calendario", "Responder"),
+        Locale::De => ("Kalender öffnen", "Antworten"),
+        Locale::It => ("Apri il calendario", "Rispondi"),
+        Locale::Pl => ("Otwórz kalendarz", "Odpowiedz"),
+    };
+    let note = if words.external {
+        match locale {
+            Locale::Fr => "{actor} vous écrit depuis Ruchoir. Le fichier joint met votre agenda à jour.",
+            Locale::En => "{actor} is writing to you from Ruchoir. The attached file updates your calendar.",
+            Locale::Es => "{actor} te escribe desde Ruchoir. El archivo adjunto actualiza tu calendario.",
+            Locale::De => "{actor} schreibt Ihnen über Ruchoir. Die angehängte Datei aktualisiert Ihren Kalender.",
+            Locale::It => "{actor} ti scrive da Ruchoir. Il file allegato aggiorna il tuo calendario.",
+            Locale::Pl => "{actor} pisze do Ciebie z Ruchoir. Załączony plik aktualizuje Twój kalendarz.",
+        }
+    } else {
+        match locale {
+            Locale::Fr => "Vous recevez cet e-mail parce que Ruchoir n'était ouvert nulle part. Pour ne plus en recevoir, désactivez «\u{a0}Invitations d'agenda\u{a0}» par e-mail dans Préférences > Notifications.",
+            Locale::En => "You are receiving this email because Ruchoir was not open anywhere. To stop them, turn off \u{201c}Calendar invitations\u{201d} by email in Preferences > Notifications.",
+            Locale::Es => "Recibes este correo porque Ruchoir no estaba abierto en ningún sitio. Para dejar de recibirlos, desactiva «Invitaciones de agenda» por correo en Preferencias > Notificaciones.",
+            Locale::De => "Sie erhalten diese E-Mail, weil Ruchoir nirgends geöffnet war. Um keine mehr zu erhalten, deaktivieren Sie \u{201e}Kalendereinladungen\u{201c} per E-Mail unter Einstellungen > Benachrichtigungen.",
+            Locale::It => "Ricevi questa e-mail perché Ruchoir non era aperto da nessuna parte. Per non riceverne più, disattiva «Inviti del calendario» per e-mail in Preferenze > Notifiche.",
+            Locale::Pl => "Otrzymujesz tę wiadomość, ponieważ Ruchoir nie był nigdzie otwarty. Aby ich nie otrzymywać, wyłącz \u{201e}Zaproszenia z kalendarza\u{201d} przez e-mail w Preferencje > Powiadomienia.",
+        }
+    };
+    let content = Content {
+        subject: invitation_subject(locale, words.kind, words.actor, words.title),
+        preheader: format!("{}{place}", words.when),
+        heading: words.title.to_owned(),
+        paragraph: fill(paragraph, words, &place),
+        button: if words.external { reply } else { open }.to_owned(),
+        link: words.link.to_owned(),
+        note: fill(note, words, &place),
+        items: Vec::new(),
+    };
+    render(locale, &content, instance)
 }
 
 /// Send every message in every language to `to`, with sample content (`mail-preview`).
@@ -1110,5 +1295,66 @@ mod tests {
         );
         assert_eq!(mail.subject, "Dans 10\u{a0}min\u{a0}: Point équipe");
         assert!(mail.text.contains("07/10 09:00 · Salle Ouest"));
+    }
+
+    #[test]
+    fn an_invitation_mail_says_who_what_and_when_and_where_to_answer() {
+        let words = InvitationWords {
+            kind: InvitationMail::Invited,
+            actor: "Alice",
+            title: "Revue",
+            when: "20/10 10:00 (Europe/Paris)",
+            location: Some("Salle Ouest"),
+            link: "https://ruchoir.example/i/?t=abc",
+            external: true,
+        };
+        let email = calendar_invitation(Locale::Fr, &words, "ruchoir.example");
+        assert_eq!(email.subject, "Invitation\u{a0}: Revue");
+        assert!(email.text.contains(
+            "Alice vous invite à «\u{a0}Revue\u{a0}», 20/10 10:00 (Europe/Paris) · Salle Ouest."
+        ));
+        assert!(email
+            .text
+            .contains("Répondre :\nhttps://ruchoir.example/i/?t=abc"));
+        assert!(email.html.contains("https://ruchoir.example/i/?t=abc"));
+        // Every language has its words.
+        for locale in [Locale::En, Locale::Es, Locale::De, Locale::It, Locale::Pl] {
+            for kind in [
+                InvitationMail::Invited,
+                InvitationMail::Updated,
+                InvitationMail::Cancelled,
+                InvitationMail::Declined,
+            ] {
+                let email = calendar_invitation(
+                    locale,
+                    &InvitationWords {
+                        kind,
+                        ..words.clone()
+                    },
+                    "x",
+                );
+                assert!(email.text.contains("Revue"), "{locale:?} {kind:?}");
+                assert!(
+                    !email.text.contains('{'),
+                    "{locale:?} {kind:?} left a placeholder"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_mail_without_a_link_has_no_button() {
+        let words = InvitationWords {
+            kind: InvitationMail::Cancelled,
+            actor: "Alice",
+            title: "Revue",
+            when: "20/10",
+            location: None,
+            link: "",
+            external: true,
+        };
+        let email = calendar_invitation(Locale::En, &words, "x");
+        assert!(!email.text.contains("Reply"));
+        assert!(!email.html.contains("rc-button-table"));
     }
 }

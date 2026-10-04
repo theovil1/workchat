@@ -26,6 +26,7 @@ use super::authz::{self, CalendarAccess};
 use super::calendars::announce;
 use super::dto::{EditQuery, EditScope, EventDto, EventInput, EventMe, OccurrenceDto};
 use super::error::CalendarError;
+use super::invitations::{self, Cancellation, Notice};
 use super::recurrence::{self, ExceptionInput, RecurrenceId, RuleOrigin, SeriesInput, When};
 use super::reminders::effective_minutes;
 use super::{ALL_DAY_REMINDERS, TIMED_REMINDERS};
@@ -514,19 +515,32 @@ pub async fn create_event(
     if let Some(minutes) = input.reminder_minutes {
         set_my_reminder(&txn, session.user_id, event.id, minutes).await?;
     }
-    if let Some(list) = &input.attendees {
-        attendees::replace(
-            &txn,
-            &event,
-            &access.calendar,
-            session.user_id,
-            list,
-            &state.secret_key,
-        )
-        .await?;
-    }
+    let invited = match &input.attendees {
+        Some(list) => {
+            attendees::replace(
+                &txn,
+                &event,
+                &access.calendar,
+                session.user_id,
+                list,
+                &state.secret_key,
+            )
+            .await?
+            .added
+        }
+        None => Vec::new(),
+    };
     txn.commit().await?;
     announce(&state, &access.calendar).await?;
+    if !invited.is_empty() {
+        invitations::send(
+            &state,
+            Some(&event),
+            Some(session.user_id),
+            Notice::Invited(invited),
+        )
+        .await;
+    }
     Ok((
         StatusCode::CREATED,
         Json(event_dto(&state.db, session.user_id, event, &access).await?),
@@ -633,6 +647,10 @@ pub async fn update_event(
     }
 
     let mut touched = vec![access.calendar.clone()];
+    // What the attendees will hear about: what changed, and for which date.
+    let before_when = when_of(&event);
+    let mut changes: Vec<String>;
+    let mut change_date: Option<RecurrenceId> = None;
     let txn = state.db.begin().await?;
     let result_id = match scope {
         EditScope::This => {
@@ -642,6 +660,13 @@ pub async fn update_event(
                     "This occurrence is not one of the series.",
                 ));
             }
+            changes = invitations::changes_between(
+                &recurrence::occurrence_when(&before_when, id),
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
+            change_date = Some(id);
             if all_day != event.all_day {
                 return Err(CalendarError::Invalid(
                     "An occurrence keeps its series' all-day setting.",
@@ -690,6 +715,12 @@ pub async fn update_event(
         }
         EditScope::Following => {
             let at = required_recurrence_id(&query)?;
+            changes = invitations::changes_between(
+                &recurrence::occurrence_when(&before_when, at),
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
             let old_rule = event.rrule.clone().unwrap_or_default();
             let (first_rule, second_rule) =
                 recurrence::split_rule(&old_rule, &when_of(&event), event.tzid.as_deref(), &at)?;
@@ -767,6 +798,17 @@ pub async fn update_event(
             }
             let before = when_of(&event);
             let timing_changed = before != parsed.when || event.tzid != parsed.tzid;
+            changes = invitations::changes_between(
+                &before,
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
+            if !changes.iter().any(|c| c == "time")
+                && (event.rrule != parsed.rrule || event.tzid != parsed.tzid)
+            {
+                changes.insert(0, "time".to_owned());
+            }
             if timing_changed {
                 let shift = delta(&before, &parsed.when);
                 let kind_changed = event.all_day != all_day;
@@ -801,25 +843,64 @@ pub async fn update_event(
     if let Some(minutes) = input.reminder_minutes {
         set_my_reminder(&txn, session.user_id, result_id, minutes).await?;
     }
-    if let Some(list) = &input.attendees {
-        let result = calendar_events::Entity::find_by_id(result_id)
-            .one(&txn)
+    let list_change = match &input.attendees {
+        Some(list) => {
+            let result = calendar_events::Entity::find_by_id(result_id)
+                .one(&txn)
+                .await?
+                .ok_or(CalendarError::Internal)?;
+            let calendar = touched.last().unwrap_or(&access.calendar);
+            attendees::replace(
+                &txn,
+                &result,
+                calendar,
+                session.user_id,
+                list,
+                &state.secret_key,
+            )
             .await?
-            .ok_or(CalendarError::Internal)?;
-        let calendar = touched.last().unwrap_or(&access.calendar);
-        attendees::replace(
-            &txn,
-            &result,
-            calendar,
-            session.user_id,
-            list,
-            &state.secret_key,
-        )
-        .await?;
-    }
+        }
+        None => attendees::Change::default(),
+    };
     txn.commit().await?;
     for calendar in &touched {
         announce(&state, calendar).await?;
+    }
+    let result = calendar_events::Entity::find_by_id(result_id)
+        .one(&state.db)
+        .await?;
+    let actor = Some(session.user_id);
+    if !list_change.removed.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Removed(list_change.removed),
+        )
+        .await;
+    }
+    let newcomers: Vec<Uuid> = list_change.added.iter().map(|r| r.id).collect();
+    if !list_change.added.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Invited(list_change.added),
+        )
+        .await;
+    }
+    if !changes.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Updated {
+                changes,
+                date: change_date,
+                except: newcomers,
+            },
+        )
+        .await;
     }
     let (result, result_access) = load_event(&state.db, session.user_id, result_id).await?;
     Ok(Json(
@@ -877,6 +958,17 @@ pub async fn delete_event(
     if scope == EditScope::Following && required_recurrence_id(&query)? == first_id(&event) {
         scope = EditScope::All;
     }
+    // Its attendees are told, with the event as it was.
+    let listed = attendees::list(&state.db, event.id).await?;
+    let cancelled_date = match scope {
+        EditScope::All => None,
+        _ => Some(required_recurrence_id(&query)?),
+    };
+    let cancelled = if listed.is_empty() {
+        None
+    } else {
+        Some(invitations::snapshot(&state.db, &event, cancelled_date, Vec::new()).await?)
+    };
     let txn = state.db.begin().await?;
     match scope {
         EditScope::All => {
@@ -954,6 +1046,29 @@ pub async fn delete_event(
     }
     txn.commit().await?;
     announce(&state, &access.calendar).await?;
+    if let Some(snapshot) = cancelled {
+        let after = match scope {
+            EditScope::All => None,
+            _ => {
+                calendar_events::Entity::find_by_id(event.id)
+                    .one(&state.db)
+                    .await?
+            }
+        };
+        invitations::send(
+            &state,
+            after.as_ref(),
+            Some(session.user_id),
+            Notice::Cancelled(Box::new(Cancellation {
+                event: event.clone(),
+                snapshot,
+                attendees: listed,
+                date: cancelled_date,
+                after: after.clone(),
+            })),
+        )
+        .await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1041,6 +1156,18 @@ pub async fn respond(
         }
     };
     attendees::answer(&state.db, &row, &body.status, date.as_ref()).await?;
+    if body.status == attendees::DECLINED {
+        invitations::send(
+            &state,
+            Some(&event),
+            Some(session.user_id),
+            Notice::Declined {
+                attendee: row,
+                date,
+            },
+        )
+        .await;
+    }
     announce(&state, &access.calendar).await?;
     state
         .hub

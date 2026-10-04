@@ -112,6 +112,55 @@ fn put_extra(event: &mut Event, extra: &serde_json::Value) {
     }
 }
 
+/// Who an event involves, as iCalendar writes it.
+#[derive(Debug, Clone, Default)]
+pub struct People {
+    /// Its organiser: their name and address (`mailto:`).
+    pub organizer: Option<(String, String)>,
+    pub attendees: Vec<Person>,
+}
+
+/// One attendee: their name, their calendar address (`mailto:` for someone invited by address,
+/// `urn:uuid:` for a member, whose address is not handed out) and their answer.
+#[derive(Debug, Clone)]
+pub struct Person {
+    pub name: String,
+    pub address: String,
+    /// `needs_action`, `accepted`, `tentative` or `declined`.
+    pub status: String,
+}
+
+fn partstat(status: &str) -> &'static str {
+    match status {
+        "accepted" => "ACCEPTED",
+        "tentative" => "TENTATIVE",
+        "declined" => "DECLINED",
+        _ => "NEEDS-ACTION",
+    }
+}
+
+fn put_people(event: &mut Event, people: Option<&People>) {
+    let Some(people) = people else {
+        return;
+    };
+    if let Some((name, address)) = &people.organizer {
+        event.append_property(
+            Property::new("ORGANIZER", address.as_str())
+                .add_parameter("CN", name.as_str())
+                .done(),
+        );
+    }
+    for person in &people.attendees {
+        event.append_multi_property(
+            Property::new("ATTENDEE", person.address.as_str())
+                .add_parameter("CN", person.name.as_str())
+                .add_parameter("ROLE", "REQ-PARTICIPANT")
+                .add_parameter("PARTSTAT", partstat(&person.status))
+                .done(),
+        );
+    }
+}
+
 /// Render a calendar: `name` as clients show it, `color` one of the palette's names (none for the
 /// address that mixes several calendars), and each event with its exceptions.
 pub fn render(
@@ -119,11 +168,26 @@ pub fn render(
     color: Option<&str>,
     events: &[(calendar_events::Model, Vec<exceptions::Model>)],
 ) -> String {
+    render_with(name, color, events, &std::collections::HashMap::new(), None)
+}
+
+/// [`render`], with each event's organiser and attendees, and a `METHOD` for a message (`REQUEST`
+/// for an invitation or a change, `CANCEL` for a cancellation, whose events are marked cancelled).
+pub fn render_with(
+    name: &str,
+    color: Option<&str>,
+    events: &[(calendar_events::Model, Vec<exceptions::Model>)],
+    people: &std::collections::HashMap<uuid::Uuid, People>,
+    method: Option<&str>,
+) -> String {
     let mut calendar = Calendar::new();
     calendar
         .append_property(Property::new("PRODID", "-//Ruchoir//Calendar//EN"))
         .append_property(Property::new("CALSCALE", "GREGORIAN"))
         .name(name);
+    if let Some(method) = method {
+        calendar.append_property(Property::new("METHOD", method));
+    }
     if let Some(color) = color {
         calendar.append_property(Property::new("X-APPLE-CALENDAR-COLOR", color_hex(color)));
     }
@@ -173,6 +237,10 @@ pub fn render(
                 changed.push((id, row));
             }
         }
+        put_people(&mut head, people.get(&event.id));
+        if method == Some("CANCEL") {
+            head.append_property(Property::new("STATUS", "CANCELLED"));
+        }
         put_extra(&mut head, &event.ical_extra);
         calendar.push(head.done());
 
@@ -195,6 +263,7 @@ pub fn render(
                 _ => recurrence::occurrence_when(&when, id),
             };
             put_when(&mut occurrence, &moved, tzid);
+            put_people(&mut occurrence, people.get(&event.id));
             put_extra(&mut occurrence, &row.ical_extra);
             calendar.push(occurrence.done());
         }

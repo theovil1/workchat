@@ -612,6 +612,8 @@ pub async fn hydrate<C: ConnectionTrait>(
                     None => event.location.clone(),
                 },
                 calendar_name: calendar.map(|c| c.name.clone()),
+                event_changes: None,
+                event_my_status: None,
             })
         })
         .collect())
@@ -709,6 +711,8 @@ mod tests {
             event_all_day: Some(false),
             event_location: None,
             calendar_name: None,
+            event_changes: None,
+            event_my_status: None,
         };
         // Due ten minutes before; the sweep runs 30 seconds after that.
         let now = start - Duration::minutes(10) + Duration::seconds(30);
