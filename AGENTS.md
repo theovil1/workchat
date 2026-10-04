@@ -65,6 +65,11 @@ Web interface only for now. The core is open source under **AGPLv3**.
   `docs/office-editing.md` and ADR 0003. New crates: `hyper-util` and `http-body-util` (hyperium,
   community-governed, already in the tree through axum) and `tokio-tungstenite` (Snapview GmbH,
   Germany).
+- **Calendar:** recurring events are stored as an RFC 5545 rule plus its exceptions and unfolded on
+  demand (`apps/api/src/calendar/`). Crates: `rrule` (community project of an independent
+  maintainer, Fredrik Meringdal; MIT/Apache-2.0), `icalendar` (Hendrik Sollich, Dresden, Germany;
+  MIT/Apache-2.0), `chrono` and `chrono-tz` (community chronotope project; MIT/Apache-2.0). `chrono`
+  is what `rrule` speaks and does not leave the calendar module: the rest of the API uses `time`.
 - **Containerization:** Docker + `docker compose` (all-in-one deployment).
 
 ## Pinned versions

@@ -9,6 +9,7 @@ mod admin;
 mod auth;
 mod bootstrap;
 mod cache;
+mod calendar;
 mod config;
 mod db;
 mod entities;
