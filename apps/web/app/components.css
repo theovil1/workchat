@@ -3859,3 +3859,38 @@ button.wc-mhead__title {
     right: var(--space-3);
   }
 }
+
+/* Calendar. A pill group whose choice wears the theme's accent rather than the ink: the view and the
+   filter, the two choices the calendar's screen keeps on show. */
+.wc-tabs--accent .wc-tab {
+  white-space: nowrap;
+}
+.wc-tabs--accent .wc-tab--on {
+  background: var(--acc);
+  color: var(--on-pastel);
+}
+/* A calendar's row in the calendar's column: its settings button shows on hover or focus, and always
+   on a touch screen, which has no hover. */
+.wc-calrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.wc-calrow:hover {
+  background: var(--surface-hover);
+}
+.wc-calrow__more {
+  opacity: 0;
+}
+.wc-calrow:hover .wc-calrow__more,
+.wc-calrow:focus-within .wc-calrow__more {
+  opacity: 1;
+}
+@media (hover: none) {
+  .wc-calrow__more {
+    opacity: 1;
+  }
+}

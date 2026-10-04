@@ -1414,7 +1414,7 @@
     "next": "Nächster Zeitraum",
     "allSpaces": "Alle meine Bereiche",
     "filter": "Vollständig angezeigte Bereiche",
-    "mine": "Ich",
+    "mine": "Meine Kalender",
     "calendars": "Kalender",
     "show": "{{name}} anzeigen",
     "hide": "{{name}} ausblenden",
@@ -1514,7 +1514,8 @@
     "color": {
       "peach": "Pfirsich",
       "lime": "Limette",
-      "sun": "Sonnengelb"
+      "sun": "Sonnengelb",
+      "accent": "Akzentfarbe des Designs"
     },
     "reminderDays_one": "{{count}} Tag vorher",
     "reminderDays_other": "{{count}} Tage vorher",
@@ -1533,6 +1534,22 @@
     "backTo": "Zurück zu {{name}}",
     "previousMonth": "Vorheriger Monat",
     "nextMonth": "Nächster Monat",
-    "pickDate": "Zu einem Datum springen"
+    "pickDate": "Zu einem Datum springen",
+    "thisSpace": "Dieser Bereich",
+    "otherSpaces": "Meine anderen Bereiche",
+    "mySpaces": "Meine Bereiche",
+    "searchSpace": "Bereich suchen",
+    "noSpaceFound": "Kein Bereich passt.",
+    "calendarCount_one": "{{count}} Kalender",
+    "calendarCount_other": "{{count}} Kalender",
+    "moreOptions": "Weitere Optionen",
+    "placeAndNotes": "Ort, Notizen…",
+    "customRule": "Eigene Wiederholung",
+    "ruleDone": "Fertig",
+    "when": "Wann",
+    "addLocation": "Ort hinzufügen",
+    "addNotes": "Notizen hinzufügen",
+    "clash_one": "Überschneidet sich mit „{{title}}“ ({{where}}, {{when}})",
+    "clash_other": "Überschneidet sich mit {{count}} Terminen: {{titles}}"
   }
 }

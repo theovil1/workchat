@@ -1,7 +1,7 @@
 "use client";
 
 import { type CSSProperties, useEffect, useState } from "react";
-import { Button, Dialog, Field, Input, Radio, Select } from "@/components/ds";
+import { Button, Dialog, Field, Icon, Input, Radio, Select } from "@/components/ds";
 import {
   CALENDAR_COLORS,
   createCalendar,
@@ -27,6 +27,7 @@ const muted: CSSProperties = { margin: 0, fontSize: "var(--text-xs)", color: "va
 
 /** The palette's names: the four the themes share are the themes' own words. */
 const COLOR_KEYS = {
+  accent: "calendar.color.accent",
   sky: "prefs.themeSky",
   mint: "prefs.themeMint",
   violet: "prefs.themeViolet",
@@ -148,6 +149,7 @@ export function CalendarSettingsDialog({
   calendar,
   spaceId,
   spaceName,
+  suggestedColor,
   onDone,
   onClose,
 }: {
@@ -156,6 +158,8 @@ export function CalendarSettingsDialog({
   /** For a new calendar: the space it goes in (none: the viewer's own). */
   spaceId?: string;
   spaceName?: string;
+  /** For a new calendar: the colour it starts with. */
+  suggestedColor?: CalendarColor;
   onDone: (message: "saved" | "created" | "deleted" | "failed") => void;
   onClose: () => void;
 }) {
@@ -163,7 +167,7 @@ export function CalendarSettingsDialog({
   const manage = !calendar || calendar.canManage;
   const inSpace = Boolean(calendar ? calendar.spaceId : spaceId);
   const [name, setName] = useState(calendar?.name ?? "");
-  const [color, setColor] = useState<CalendarColor>(calendar?.color ?? (inSpace ? "mint" : "violet"));
+  const [color, setColor] = useState<CalendarColor>(calendar?.color ?? suggestedColor ?? "mint");
   const [writeAccess, setWriteAccess] = useState(calendar?.writeAccess ?? "members");
   const [defaultReminder, setDefaultReminder] = useState(calendar ? (calendar.defaultReminderMinutes === null ? "none" : String(calendar.defaultReminderMinutes)) : "10");
   const [mine, setMine] = useState(calendar?.myReminderMinutes === undefined ? "default" : calendar.myReminderMinutes === null ? "none" : String(calendar.myReminderMinutes));
@@ -251,8 +255,15 @@ export function CalendarSettingsDialog({
                     outline: color === c ? "2px solid var(--surface)" : undefined,
                     outlineOffset: -4,
                     cursor: "pointer",
+                    color: "var(--on-pastel)",
+                    display: "grid",
+                    placeItems: "center",
+                    padding: 0,
                   }}
-                />
+                >
+                  {/* The accent is one of the pastels: a star tells it apart from the one it is now. */}
+                  {c === "accent" ? <Icon name="star" size={13} /> : null}
+                </button>
               ))}
             </div>
             {inSpace ? (

@@ -1462,7 +1462,7 @@
     "next": "Periodo successivo",
     "allSpaces": "Tutti i miei spazi",
     "filter": "Spazi mostrati per intero",
-    "mine": "Io",
+    "mine": "I miei calendari",
     "calendars": "Calendari",
     "show": "Mostra {{name}}",
     "hide": "Nascondi {{name}}",
@@ -1563,7 +1563,8 @@
     "color": {
       "peach": "Pesca",
       "lime": "Lime",
-      "sun": "Giallo sole"
+      "sun": "Giallo sole",
+      "accent": "Colore di accento del tema"
     },
     "reminderDays_one": "{{count}} giorno prima",
     "reminderDays_many": "{{count}} giorni prima",
@@ -1589,6 +1590,24 @@
     "backTo": "Torna a {{name}}",
     "previousMonth": "Mese precedente",
     "nextMonth": "Mese successivo",
-    "pickDate": "Vai a una data"
+    "pickDate": "Vai a una data",
+    "thisSpace": "Questo spazio",
+    "otherSpaces": "I miei altri spazi",
+    "mySpaces": "I miei spazi",
+    "searchSpace": "Cerca uno spazio",
+    "noSpaceFound": "Nessuno spazio corrisponde.",
+    "calendarCount_one": "{{count}} calendario",
+    "calendarCount_many": "{{count}} calendari",
+    "calendarCount_other": "{{count}} calendari",
+    "moreOptions": "Altre opzioni",
+    "placeAndNotes": "Luogo, note…",
+    "customRule": "Ripetizione personalizzata",
+    "ruleDone": "Fatto",
+    "when": "Quando",
+    "addLocation": "Aggiungi un luogo",
+    "addNotes": "Aggiungi note",
+    "clash_one": "Si sovrappone a «{{title}}» ({{where}}, {{when}})",
+    "clash_many": "Si sovrappone a {{count}} eventi: {{titles}}",
+    "clash_other": "Si sovrappone a {{count}} eventi: {{titles}}"
   }
 }

@@ -196,3 +196,31 @@ export function occursOn(occurrence: { allDay: boolean; start: string; end: stri
   const last = endAt > Date.parse(occurrence.start) ? localDay(new Date(endAt - 1).toISOString(), tz) : first;
   return first <= day && day <= last;
 }
+
+/** The colour a new calendar starts with: the pastel the viewer's calendars use least, ties going
+ *  to the order the server hands them to new spaces. */
+export function freeColor(calendars: ReadonlyArray<{ color: string }>): "mint" | "violet" | "peach" | "lime" | "sun" | "pink" | "sky" {
+  const order = ["mint", "violet", "peach", "lime", "sun", "pink", "sky"] as const;
+  const uses = (c: string) => calendars.filter((k) => k.color === c).length;
+  return order.reduce((best, c) => (uses(c) < uses(best) ? c : best), order[0]);
+}
+
+/**
+ * What a new or changed event overlaps, whatever the calendar: `ours` as instants (an all-day event
+ * as the midnights of its zone), `exclude` the event being edited. Touching ends do not clash.
+ */
+export function clashes<T extends { eventId: string; allDay: boolean; start: string; end: string }>(
+  found: readonly T[],
+  ours: { start: string; end: string },
+  tz: string,
+  exclude?: string,
+): T[] {
+  const from = Date.parse(ours.start);
+  const to = Date.parse(ours.end);
+  return found.filter((o) => {
+    if (o.eventId === exclude) return false;
+    const start = Date.parse(o.allDay ? zonedTime(o.start, 0, tz) : o.start);
+    const end = Date.parse(o.allDay ? zonedTime(o.end, 0, tz) : o.end);
+    return start < to && from < end;
+  });
+}

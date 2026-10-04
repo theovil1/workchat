@@ -7,7 +7,7 @@ import { CalendarSettingsDialog, FeedsDialog } from "./CalendarSettingsDialog";
 import type { Draft } from "./CalendarScreen";
 import { EventDetails } from "./EventDetails";
 import { EventForm } from "./EventForm";
-import type { Filter } from "./model";
+import { freeColor, type Filter } from "./model";
 
 /** Which calendar's settings are open: one to change, a new one (a space's, or the viewer's), or
  *  the subscription to all of them. */
@@ -29,14 +29,14 @@ export type CalendarOverlaysProps = {
 };
 
 /** The calendar's windows: an event's details, the event form, a calendar's settings. */
-export function CalendarOverlays({ timeZone, spaces, calendars, filter, opened, draft, settings, onClose, onChanged, onNotify }: CalendarOverlaysProps) {
+export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter, opened, draft, settings, onClose, onChanged, onNotify }: CalendarOverlaysProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<{ occurrence: Occurrence; event: CalendarEvent } | null>(null);
   const spaceName = (id?: string) => spaces.find((s) => s.id === id)?.name;
   const label = (calendar?: Calendar) => {
     if (!calendar) return "";
     const space = spaceName(calendar.spaceId);
-    return space ? `${space} · ${calendar.name}` : calendar.name;
+    return space && space !== calendar.name ? `${space} · ${calendar.name}` : calendar.name;
   };
   const close = () => {
     setEditing(null);
@@ -59,10 +59,10 @@ export function CalendarOverlays({ timeZone, spaces, calendars, filter, opened, 
   if (settings) {
     const calendar = settings.kind === "edit" ? settings.calendar : undefined;
     const spaceId = settings.kind === "new" ? settings.spaceId : calendar?.spaceId;
-    return <CalendarSettingsDialog calendar={calendar} spaceId={spaceId} spaceName={spaceName(spaceId)} onDone={finish} onClose={close} />;
+    return <CalendarSettingsDialog calendar={calendar} spaceId={spaceId} spaceName={spaceName(spaceId)} suggestedColor={freeColor(calendars)} onDone={finish} onClose={close} />;
   }
   if (editing) {
-    return <EventForm calendars={calendars} spaces={spaces} timeZone={timeZone} editing={editing} onDone={finish} onCancel={close} />;
+    return <EventForm compact={compact} calendars={calendars} spaces={spaces} timeZone={timeZone} editing={editing} onDone={finish} onCancel={close} />;
   }
   if (draft) {
     // A new event goes first in the filtered space's default calendar, when the viewer may write in it.
@@ -71,6 +71,7 @@ export function CalendarOverlays({ timeZone, spaces, calendars, filter, opened, 
       (filter.kind === "space" ? calendars.find((c) => c.spaceId === filter.spaceId && c.isDefault && c.canWriteEvents)?.id : undefined);
     return (
       <EventForm
+        compact={compact}
         calendars={calendars}
         spaces={spaces}
         timeZone={timeZone}

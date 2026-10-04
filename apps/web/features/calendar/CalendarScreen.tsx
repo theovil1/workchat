@@ -16,7 +16,7 @@ import {
 } from "@/lib/data/calendar";
 import { useTranslation } from "@/lib/i18n";
 import { CalendarOverlays, type SettingsTarget } from "./CalendarOverlays";
-import { CalendarSidebar, FilterChips } from "./CalendarSidebar";
+import { CalendarSidebar, ScopeSwitch, SpacePicker } from "./CalendarSidebar";
 import { periodTitle } from "./format";
 import { ListView } from "./ListView";
 import {
@@ -46,8 +46,9 @@ function storedFilter(): Filter | null {
   }
 }
 
-/** What a new event starts from: a day, and a time of that day for a timed one. */
-export type Draft = { day: string; minutes?: number; calendarId?: string };
+/** What a new event starts from: a day, and a time of that day for a timed one. `at` is where it was
+ *  asked for on screen, for the quick form to open beside it (a desktop's). */
+export type Draft = { day: string; minutes?: number; calendarId?: string; at?: { x: number; y: number } };
 
 export type CalendarScreenProps = {
   compact: boolean;
@@ -167,11 +168,11 @@ export function CalendarScreen({
       const calendar = byId.get(o.calendarId);
       if (!calendar) return "";
       const space = spaceName(calendar.spaceId);
-      return space ? `${space} · ${calendar.name}` : calendar.name;
+      return space && space !== calendar.name ? `${space} · ${calendar.name}` : calendar.name;
     },
     [byId, spaceName],
   );
-  // Only the spaces the viewer has calendars in get a chip.
+  // Only the spaces the viewer has calendars in can be picked.
   const chipSpaces = spaces.filter((s) =>
     (calendars ?? []).some((c) => c.spaceId === s.id),
   );
@@ -187,6 +188,12 @@ export function CalendarScreen({
         `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`,
       );
     }
+  };
+
+  const toggleMany = (many: Calendar[], hidden: boolean) => {
+    const ids = new Set(many.map((c) => c.id));
+    setCalendars((list) => list?.map((c) => (ids.has(c.id) ? { ...c, hidden } : c)) ?? null);
+    Promise.all(many.filter((c) => c.hidden !== hidden).map((c) => setCalendarMe(c.id, { hidden }))).catch(() => reload());
   };
 
   const toggle = (calendar: Calendar) => {
@@ -225,10 +232,17 @@ export function CalendarScreen({
       : {};
 
   const writable = (calendars ?? []).filter((c) => c.canWriteEvents);
-  const startDraft = (day: string, minutes?: number) => {
+  const startDraft = (day: string, minutes?: number, at?: { x: number; y: number }) => {
     if (writable.length === 0) return;
-    setDraft({ day, minutes });
+    setDraft({ day, minutes, at: compact ? undefined : at });
   };
+  // The space listed first in the column: the one the screen was opened from, else the one filtered.
+  const currentSpaceId = spaceId ?? (filter.kind === "space" ? filter.spaceId : undefined);
+  const filterControl = spaceId ? (
+    <ScopeSwitch spaceId={spaceId} filter={filter} onFilter={setFilter} />
+  ) : (
+    <SpacePicker spaces={chipSpaces} filter={filter} onFilter={setFilter} />
+  );
 
   const viewTabs = (
     compact
@@ -244,10 +258,12 @@ export function CalendarScreen({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: compact ? "8px 12px" : "0 16px",
+    padding: compact ? "8px 12px" : "6px 16px",
     minHeight: compact ? undefined : "var(--topbar-height)",
     borderBottom: compact ? undefined : "1.5px solid var(--border-subtle)",
-    flexWrap: compact ? "wrap" : undefined,
+    // A tablet's narrower screen puts the filter and the views on a second line.
+    flexWrap: "wrap",
+    rowGap: 6,
   };
 
   const body = (() => {
@@ -313,6 +329,7 @@ export function CalendarScreen({
         lookOf={lookOf}
         onOpen={setOpened}
         onCreateAt={writable.length > 0 ? startDraft : undefined}
+        pending={draft && draft.minutes !== undefined ? { day: draft.day, minutes: draft.minutes } : undefined}
         compact={compact}
       />
     );
@@ -324,7 +341,9 @@ export function CalendarScreen({
       <CalendarSidebar
         calendars={calendars}
         spaces={spaces}
+        currentSpaceId={currentSpaceId}
         onToggle={toggle}
+        onToggleMany={toggleMany}
         onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
         onNewCalendar={(space) => setSettings({ kind: "new", spaceId: space })}
         header={
@@ -357,7 +376,13 @@ export function CalendarScreen({
                 borderBottom: "1px solid var(--border-subtle)",
               }}
             >
-              <MiniMonth anchor={anchor} today={today} onPick={setAnchor} />
+              <MiniMonth
+                anchor={anchor}
+                today={today}
+                shown={view === "week" ? daysOf(addDays(anchor, -weekdayOf(anchor)), 7) : [anchor]}
+                band={view === "week"}
+                onPick={setAnchor}
+              />
             </div>
           </>
         }
@@ -447,6 +472,7 @@ export function CalendarScreen({
               fontSize: compact ? "var(--text-lg)" : "var(--text-md)",
               fontWeight: 700,
               color: "var(--text-strong)",
+              whiteSpace: "nowrap",
               flex: compact ? 1 : undefined,
               cursor: compact ? "pointer" : undefined,
             }}
@@ -457,8 +483,10 @@ export function CalendarScreen({
           {!compact ? (
             <>
               <div style={{ flex: 1 }} />
+              {filterControl}
               <Tabs
                 variant="pills"
+                className="wc-tabs--accent"
                 items={viewTabs}
                 value={view}
                 onChange={(v) => setView(v as View)}
@@ -468,7 +496,10 @@ export function CalendarScreen({
                   variant="primary"
                   size="sm"
                   iconLeft="plus"
-                  onClick={() => startDraft(anchor)}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    startDraft(anchor, undefined, { x: r.right, y: r.bottom });
+                  }}
                 >
                   {t("calendar.newEvent")}
                 </Button>
@@ -476,30 +507,28 @@ export function CalendarScreen({
             </>
           ) : null}
         </div>
-        <div
-          style={{
-            flex: "none",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            padding: compact ? "0 12px 8px" : "8px 16px",
-            borderBottom: "1px solid var(--border-subtle)",
-          }}
-        >
-          <FilterChips
-            spaces={chipSpaces}
-            filter={filter}
-            onFilter={setFilter}
-          />
-          {compact ? (
+        {compact ? (
+          <div
+            style={{
+              flex: "none",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 8,
+              padding: "0 12px 8px",
+              borderBottom: "1px solid var(--border-subtle)",
+            }}
+          >
+            {filterControl}
             <Tabs
               variant="pills"
+              className="wc-tabs--accent"
               items={viewTabs}
               value={view}
               onChange={(v) => setView(v as View)}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
           <div
             style={{
@@ -550,7 +579,9 @@ export function CalendarScreen({
               variant="sheet"
               calendars={calendars}
               spaces={spaces}
+              currentSpaceId={currentSpaceId}
               onToggle={toggle}
+              onToggleMany={toggleMany}
               onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
               onNewCalendar={(space) =>
                 setSettings({ kind: "new", spaceId: space })

@@ -1,7 +1,7 @@
 // Run with `pnpm --filter @ruchoir/web test` (Node's own runner, types stripped by Node).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inFilter, layoutDay, localDay, MIN_HEIGHT, occursOn, rangeFor, zonedTime } from "./model.ts";
+import { clashes, freeColor, inFilter, layoutDay, localDay, MIN_HEIGHT, occursOn, rangeFor, zonedTime } from "./model.ts";
 
 const PARIS = "Europe/Paris";
 
@@ -99,4 +99,26 @@ test("short events drawn at their minimum height never overlap", () => {
   assert.deepEqual(laid.map((p) => [p.item.id, p.column, p.columns]), [["a", 0, 2], ["b", 1, 2]]);
   // The grid draws an hour 48 px tall: the minimum is what a title needs (18 px).
   assert.ok((MIN_HEIGHT / 60) * 48 >= 18);
+});
+
+test("a_new_calendar_takes_the_colour_used_least", () => {
+  assert.equal(freeColor([]), "mint");
+  assert.equal(freeColor([{ color: "accent" }, { color: "mint" }]), "violet");
+  assert.equal(freeColor([{ color: "mint" }, { color: "violet" }, { color: "peach" }, { color: "mint" }]), "lime");
+});
+
+test("a_new_event_clashes_with_what_overlaps_it_in_any_calendar", () => {
+  const timed = (eventId: string, start: string, end: string) => ({ eventId, allDay: false, start, end });
+  const found = [
+    timed("a", "2026-10-08T08:00:00Z", "2026-10-08T09:00:00Z"), // 10:00 - 11:00 in Paris
+    timed("b", "2026-10-08T09:00:00Z", "2026-10-08T10:00:00Z"), // starts as ours ends: no clash
+    timed("c", "2026-10-08T07:30:00Z", "2026-10-08T08:30:00Z"),
+    { eventId: "d", allDay: true, start: "2026-10-08", end: "2026-10-09" },
+    { eventId: "e", allDay: true, start: "2026-10-09", end: "2026-10-10" },
+  ];
+  // 10:30 - 11:00 in Paris.
+  const ours = { start: "2026-10-08T08:30:00Z", end: "2026-10-08T09:00:00Z" };
+  assert.deepEqual(clashes(found, ours, PARIS).map((o) => o.eventId), ["a", "d"]);
+  // The event being edited does not clash with itself.
+  assert.deepEqual(clashes(found, ours, PARIS, "a").map((o) => o.eventId), ["d"]);
 });

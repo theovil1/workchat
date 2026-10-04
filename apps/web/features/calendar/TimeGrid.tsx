@@ -16,7 +16,8 @@ const GUTTER = 52;
 /**
  * The week and day views: a column per day, hours down the side, the all-day events in a band above,
  * a line at the current time. Events that overlap share their column's width. Clicking (or tapping)
- * an empty slot asks for a new event at that half hour.
+ * an empty slot asks for a new event at that half hour, and the slot asked for stays drawn (in the
+ * accent) while the new event is being written. Today's column is tinted with the accent.
  */
 export function TimeGrid({
   days,
@@ -25,6 +26,7 @@ export function TimeGrid({
   lookOf,
   onOpen,
   onCreateAt,
+  pending,
   compact,
 }: {
   days: string[];
@@ -32,12 +34,16 @@ export function TimeGrid({
   timeZone: string;
   lookOf: (occurrence: Occurrence) => ChipLook;
   onOpen: (occurrence: Occurrence) => void;
-  onCreateAt?: (day: string, minutes: number) => void;
+  onCreateAt?: (day: string, minutes: number, at: { x: number; y: number }) => void;
+  /** The slot a new event is being written for. */
+  pending?: { day: string; minutes: number };
   compact: boolean;
 }) {
   const { t } = useTranslation();
   const scroller = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The empty slot under the pointer, drawn as a hint that a click adds an event there.
+  const [hover, setHover] = useState<{ day: string; minutes: number } | null>(null);
   const today = localDay(new Date(now).toISOString(), timeZone);
 
   useEffect(() => {
@@ -70,8 +76,8 @@ export function TimeGrid({
                   <span
                     style={{
                       fontWeight: 700,
-                      color: isToday ? "var(--action-primary-fg)" : "var(--text-strong)",
-                      background: isToday ? "var(--action-primary-bg)" : undefined,
+                      color: isToday ? "var(--on-pastel)" : "var(--text-strong)",
+                      background: isToday ? "var(--acc)" : undefined,
                       borderRadius: 999,
                       padding: isToday ? "1px 6px" : undefined,
                     }}
@@ -111,14 +117,24 @@ export function TimeGrid({
                 style={{
                   ...column,
                   backgroundImage: `repeating-linear-gradient(to bottom, var(--border-subtle) 0 1px, transparent 1px ${HOUR}px)`,
+                  backgroundColor: day === today && days.length > 1 ? "color-mix(in srgb, var(--acc) 14%, transparent)" : undefined,
                   cursor: onCreateAt ? "copy" : undefined,
                 }}
                 onClick={(event) => {
                   if (!onCreateAt) return;
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const minutes = Math.floor(((event.clientY - rect.top) / HOUR) * 2) * 30;
-                  onCreateAt(day, Math.max(0, Math.min(23 * 60 + 30, minutes)));
+                  onCreateAt(day, slotAt(event), { x: event.clientX, y: event.clientY });
                 }}
+                onMouseMove={(event) => {
+                  if (!onCreateAt || compact) return;
+                  // Over an event, the hint steps aside: a click there opens the event.
+                  if (event.target !== event.currentTarget) {
+                    if (hover) setHover(null);
+                    return;
+                  }
+                  const minutes = slotAt(event);
+                  if (hover?.day !== day || hover.minutes !== minutes) setHover({ day, minutes });
+                }}
+                onMouseLeave={() => setHover(null)}
                 aria-label={t("calendar.newEventOn", { day: longDay(day) })}
               >
                 {laid.map((p) => {
@@ -154,6 +170,49 @@ export function TimeGrid({
                     </div>
                   );
                 })}
+                {hover?.day === day && pending?.day !== day ? (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: (hover.minutes / 60) * HOUR,
+                      height: HOUR - 2,
+                      left: 2,
+                      right: 2,
+                      borderRadius: "var(--radius-sm)",
+                      background: "color-mix(in srgb, var(--acc) 30%, transparent)",
+                      border: "1.5px dashed var(--acc)",
+                      color: "var(--text-strong)",
+                      fontSize: "var(--text-2xs)",
+                      fontWeight: 600,
+                      padding: "2px 6px",
+                      lineHeight: 1.3,
+                      overflow: "hidden",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <div>{t("calendar.newEvent")}</div>
+                    <div style={{ fontWeight: 400 }}>
+                      {wallClock(hover.minutes)} - {wallClock(hover.minutes + 60)}
+                    </div>
+                  </div>
+                ) : null}
+                {pending?.day === day ? (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: (pending.minutes / 60) * HOUR,
+                      height: HOUR - 2,
+                      left: 2,
+                      right: 2,
+                      borderRadius: "var(--radius-sm)",
+                      background: "var(--acc)",
+                      border: "2px solid var(--ink)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                ) : null}
                 {day === today ? (
                   <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: nowTop, borderTop: "2px solid var(--alarm)", pointerEvents: "none" }}>
                     <span style={{ position: "absolute", left: -4, top: -5, width: 8, height: 8, borderRadius: "50%", background: "var(--alarm)" }} />
@@ -166,6 +225,19 @@ export function TimeGrid({
       </div>
     </div>
   );
+}
+
+/** A time of day, in minutes from midnight, as the viewer's clock writes it. */
+function wallClock(minutes: number): string {
+  const m = minutes % 1440;
+  return clock(`2000-01-01T${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00Z`, "UTC");
+}
+
+/** The half hour under the pointer in a day's column, in minutes from midnight. */
+function slotAt(event: { clientY: number; currentTarget: Element }): number {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const minutes = Math.floor(((event.clientY - rect.top) / HOUR) * 2) * 30;
+  return Math.max(0, Math.min(23 * 60 + 30, minutes));
 }
 
 /** The days a week or day view shows. */

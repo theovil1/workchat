@@ -92,9 +92,10 @@ export function RecurrenceEditor({ form, start, onChange }: { form: RuleForm; st
                     width: 34,
                     height: 34,
                     borderRadius: "50%",
-                    border: `1px solid ${on ? "var(--action-primary-bg)" : "var(--border-default)"}`,
-                    background: on ? "var(--action-primary-bg)" : "var(--surface-card)",
-                    color: on ? "var(--action-primary-fg)" : "var(--text-strong)",
+                    border: `1px solid ${on ? "var(--acc)" : "var(--border-default)"}`,
+                    background: on ? "var(--acc)" : "var(--surface-card)",
+                    color: on ? "var(--on-pastel)" : "var(--text-strong)",
+                    fontWeight: on ? 700 : 400,
                     cursor: "pointer",
                   }}
                 >

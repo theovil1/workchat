@@ -57,6 +57,20 @@ audience, and open screens reload.
   hold back the push and the mail; the inbox keeps it. The preferences have a "Calendar reminders"
   row, for the app and for mail.
 
+## The screen
+
+- **The column** (desktop and tablet, in place of the space's) lists the viewer's calendars in three
+  blocks: their own, the space the screen was opened from, and their other spaces, one line per space
+  (a space with several calendars unfolds them), folded on demand and searchable beyond six spaces.
+- **The filter** never grows with the number of spaces: "This space" or "All my spaces" when the
+  screen was opened from a space, a searchable list of spaces from the phone's tab.
+- **New events** start from a small bubble beside the slot clicked (title, times, calendar), which
+  opens into the full window; the window is laid out not to scroll, and the custom repetition takes
+  its place while it is set. Hovering an empty slot shows what a click would create. Every form warns
+  (without refusing) when the event overlaps another one, in any calendar the viewer sees.
+- **The theme's accent** marks what is chosen: the view, the filter, today, and what the small month
+  shows (a faint band for the week on screen, a faint pill for a single day).
+
 ## Subscribing from a phone
 
 Each person can make a **personal address** for one calendar, or one address for all of them:

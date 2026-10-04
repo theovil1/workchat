@@ -1510,7 +1510,7 @@
     "next": "Następny okres",
     "allSpaces": "Wszystkie moje przestrzenie",
     "filter": "Przestrzenie pokazane w całości",
-    "mine": "Ja",
+    "mine": "Moje kalendarze",
     "calendars": "Kalendarze",
     "show": "Pokaż {{name}}",
     "hide": "Ukryj {{name}}",
@@ -1612,7 +1612,8 @@
     "color": {
       "peach": "Brzoskwinia",
       "lime": "Limonka",
-      "sun": "Słoneczna żółć"
+      "sun": "Słoneczna żółć",
+      "accent": "Kolor akcentu motywu"
     },
     "reminderDays_one": "{{count}} dzień przed",
     "reminderDays_few": "{{count}} dni przed",
@@ -1645,6 +1646,26 @@
     "backTo": "Wróć do: {{name}}",
     "previousMonth": "Poprzedni miesiąc",
     "nextMonth": "Następny miesiąc",
-    "pickDate": "Przejdź do daty"
+    "pickDate": "Przejdź do daty",
+    "thisSpace": "Ta przestrzeń",
+    "otherSpaces": "Moje inne przestrzenie",
+    "mySpaces": "Moje przestrzenie",
+    "searchSpace": "Szukaj przestrzeni",
+    "noSpaceFound": "Żadna przestrzeń nie pasuje.",
+    "calendarCount_one": "{{count}} kalendarz",
+    "calendarCount_few": "{{count}} kalendarze",
+    "calendarCount_many": "{{count}} kalendarzy",
+    "calendarCount_other": "{{count}} kalendarza",
+    "moreOptions": "Więcej opcji",
+    "placeAndNotes": "Miejsce, notatki…",
+    "customRule": "Własne powtarzanie",
+    "ruleDone": "Gotowe",
+    "when": "Kiedy",
+    "addLocation": "Dodaj miejsce",
+    "addNotes": "Dodaj notatki",
+    "clash_one": "Nakłada się na „{{title}}” ({{where}}, {{when}})",
+    "clash_few": "Nakłada się na {{count}} wydarzenia: {{titles}}",
+    "clash_many": "Nakłada się na {{count}} wydarzeń: {{titles}}",
+    "clash_other": "Nakłada się na {{count}} wydarzenia: {{titles}}"
   }
 }

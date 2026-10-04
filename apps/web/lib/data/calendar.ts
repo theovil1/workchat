@@ -9,8 +9,10 @@
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, apiRequest } from "./http";
 
 /** The palette's pastels a calendar may wear. */
-export type CalendarColor = "sky" | "mint" | "violet" | "pink" | "peach" | "lime" | "sun";
-export const CALENDAR_COLORS: readonly CalendarColor[] = ["sky", "mint", "violet", "pink", "peach", "lime", "sun"];
+/** A palette pastel, or `accent`: the viewer's own theme accent (what a personal calendar wears). */
+export type CalendarColor = "accent" | "sky" | "mint" | "violet" | "pink" | "peach" | "lime" | "sun";
+export const CALENDAR_COLORS: readonly CalendarColor[] = ["accent", "sky", "mint", "violet", "pink", "peach", "lime", "sun"];
+
 
 export type Calendar = {
   id: string;

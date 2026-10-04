@@ -100,8 +100,8 @@ export function MonthView({
                   borderRadius: 999,
                   fontSize: "var(--text-xs)",
                   fontWeight: isToday || isSelected ? 700 : 400,
-                  color: isSelected ? "var(--action-primary-fg)" : isToday ? "var(--alarm)" : outside ? "var(--text-disabled)" : "var(--text-strong)",
-                  background: isSelected ? "var(--action-primary-bg)" : undefined,
+                  color: isSelected || (!compact && isToday) ? "var(--on-pastel)" : isToday ? "var(--alarm)" : outside ? "var(--text-disabled)" : "var(--text-strong)",
+                  background: isSelected || (!compact && isToday) ? "var(--acc)" : undefined,
                 }}
               >
                 {Number(day.slice(8))}

@@ -4,8 +4,10 @@ import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { CalendarColor, Occurrence } from "@/lib/data/calendar";
 import { clock } from "./format";
 
-/** A calendar's colour: the palette's pastel, with the dark ink on it in every theme. */
+/** A calendar's colour: the palette's pastel, with the dark ink on it in every theme. `accent` is
+ *  the viewer's own theme accent, itself one of the pastels. */
 export function colorVar(color: CalendarColor | undefined): string {
+  if (color === "accent") return "var(--acc)";
   return `var(--${color ?? "sky"})`;
 }
 
