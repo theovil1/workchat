@@ -204,15 +204,15 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--surface)" }}>
       <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", margin: -1 }}>{t("calendar.title")}</h1>
       <div style={bar}>
-        {onBack ? <IconButton icon="arrow-left" label={t("common.back")} onClick={onBack} /> : null}
+        {onBack ? <IconButton icon="arrow-left" size={compact ? "lg" : "md"} label={t("common.back")} onClick={onBack} /> : null}
         {!compact ? (
           <Button size="sm" onClick={() => setAnchor(today)}>
             {t("conversation.today")}
           </Button>
         ) : null}
-        <IconButton icon="chevron-left" label={t("calendar.previous")} onClick={() => step(-1)} />
-        <IconButton icon="chevron-right" label={t("calendar.next")} onClick={() => step(1)} />
-        {compact ? <IconButton icon="rss" label={t("calendar.subscribeAll")} onClick={() => setSettings({ kind: "feeds" })} /> : null}
+        <IconButton icon="chevron-left" size={compact ? "lg" : "md"} label={t("calendar.previous")} onClick={() => step(-1)} />
+        <IconButton icon="chevron-right" size={compact ? "lg" : "md"} label={t("calendar.next")} onClick={() => step(1)} />
+        {compact ? <IconButton icon="rss" size="lg" label={t("calendar.subscribeAll")} onClick={() => setSettings({ kind: "feeds" })} /> : null}
         <h2
           style={{ margin: 0, fontSize: compact ? "var(--text-lg)" : "var(--text-md)", fontWeight: 700, color: "var(--text-strong)", flex: compact ? 1 : undefined, cursor: compact ? "pointer" : undefined }}
           onClick={compact ? () => setAnchor(today) : undefined}

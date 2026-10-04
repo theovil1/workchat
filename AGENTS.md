@@ -227,7 +227,9 @@ terminates TLS for that instance, rather than exposing its port:
   transaction and pushed over the hub to open pages; for everyone else there is content-free Web
   Push to subscribed browsers (ADR 0001) and an unread digest by email through the instance's own
   relay. The preferences they obey are held server-side, and the server rule (`notify::prefs::allows`)
-  mirrors the inbox rule (`passesPref` in the web client): change one, change the other.
+  mirrors the inbox rule (`passesPref` in the web client): change one, change the other. Calendar
+  reminders are a notification kind of their own (`calendar_reminder`, about an event occurrence
+  rather than a message), with their own switches and their own immediate mail (`docs/calendar.md`).
 
 ### Office editing gotchas
 

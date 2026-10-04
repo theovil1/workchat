@@ -22,6 +22,8 @@
 - Files: uploads, folders, previews, message attachments, S3-compatible object storage.
 - Live editing of Word, Excel and PowerPoint files by several people at once, through the optional
   Euro-Office engine ([docs/office-editing.md](docs/office-editing.md)).
+- Calendar: personal and space calendars, recurring events, reminders in the app, by push and by
+  mail, and a read-only iCal subscription for phones ([docs/calendar.md](docs/calendar.md)).
 - Accounts: authentication, roles, workspace and member management.
 - Import: Nextcloud and Mattermost via an official encrypted export, Slack from its workspace export,
   Teams through Microsoft Graph.

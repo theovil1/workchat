@@ -51,6 +51,9 @@ file attached to forty messages is stored once and a directory never holds a mil
 }
 ```
 
+(Calendars now have a home, `docs/calendar.md`; bringing Nextcloud's `.ics` files in is the calendar's
+next step, and until then the Nextcloud producer keeps naming them in its `limits`, as above.)
+
 `limits` is not decoration. A producer states what it could not take, in plain language, and the
 import screen shows those lines to the administrator **before** the run. An import that quietly
 leaves things behind is the failure mode this whole feature exists to avoid.

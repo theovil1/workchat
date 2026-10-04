@@ -18,7 +18,7 @@
  */
 
 const STAGES = ["login", "signup", "mfa", "forgot", "reset", "verify", "invite", "onboarding", "app"] as const;
-const VIEWS = ["channel", "files", "settings", "prefs", "threads", "mentions", "saved"] as const;
+const VIEWS = ["channel", "files", "calendar", "settings", "prefs", "threads", "mentions", "saved"] as const;
 const PANELS = ["files", "members", "pinned", "search"] as const;
 const MODALS = [
   "newChannel",
