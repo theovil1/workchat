@@ -381,10 +381,11 @@ export async function searchInvitees(calendarId: string, query: string, signal?:
   return found.map((p) => ({ userId: p.user_id, name: p.name }));
 }
 
-/** When some people are busy over `[from, to)` (31 days at most). */
-export async function freeBusy(userIds: string[], from: string, to: string, signal?: AbortSignal): Promise<BusyTimes[]> {
+/** When some people are busy over `[from, to)` (31 days at most), leaving out `excludeEvent` (the one
+ *  being moved). */
+export async function freeBusy(userIds: string[], from: string, to: string, signal?: AbortSignal, excludeEvent?: string): Promise<BusyTimes[]> {
   const found = await apiRequest<{ user_id: string; busy: { start: string; end: string }[] }[]>("POST", "/calendar/freebusy", {
-    json: { users: userIds, from, to },
+    json: { users: userIds, from, to, exclude_event: excludeEvent },
     signal,
   });
   return found.map((p) => ({ userId: p.user_id, busy: p.busy }));

@@ -3,6 +3,7 @@
 import { type CSSProperties, type RefObject, useState } from "react";
 import { Avatar, EmptyState, Icon, IconButton, Popover, Tabs } from "@/components/ds";
 import { getAvatar, getPresence } from "@/lib/data";
+import { respondToEvent } from "@/lib/data/calendar";
 import { type AppNotification, isMention, type NotifKind, notifSummary } from "./notifications";
 import { key, type TranslationKey, useTranslation } from "@/lib/i18n";
 import { formatDate, formatDateTime, formatStamp } from "@/lib/i18n/format";
@@ -17,7 +18,61 @@ const KIND_ICON: Record<NotifKind, string> = {
   // Any other message, for someone who asked to hear about every one: the channel's own mark.
   message: "hash",
   calendar_reminder: "calendar",
+  calendar_invitation: "calendar-plus",
+  calendar_update: "calendar",
+  calendar_cancel: "x",
+  calendar_declined: "user-minus",
 };
+
+/** The answers an invitation offers from the inbox, for every date. */
+const ANSWERS = [
+  { status: "accepted", key: key("calendar.answer.accepted") },
+  { status: "tentative", key: key("calendar.answer.tentative") },
+  { status: "declined", key: key("calendar.answer.declined") },
+] as const;
+
+/** Answer an invitation from its notification, without opening it. */
+function InboxAnswer({ eventId, current }: { eventId: string; current?: string }) {
+  const { t } = useTranslation();
+  const [answer, setAnswer] = useState(current);
+  const [sending, setSending] = useState(false);
+  return (
+    <span role="group" aria-label={t("calendar.yourAnswer")} style={{ display: "flex", gap: 4, marginTop: 6 }}>
+      {ANSWERS.map(({ status, key: label }) => {
+        const on = answer === status;
+        return (
+          <button
+            key={status}
+            type="button"
+            aria-pressed={on}
+            disabled={sending}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSending(true);
+              respondToEvent(eventId, status)
+                .then(() => setAnswer(status))
+                .catch(() => {})
+                .finally(() => setSending(false));
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            style={{
+              border: `1px solid ${on ? "var(--ink)" : "var(--border-default)"}`,
+              background: on ? "var(--acc)" : "var(--surface-card)",
+              color: on ? "var(--on-pastel)" : "var(--text-strong)",
+              fontWeight: on ? 700 : 500,
+              borderRadius: 999,
+              padding: "2px 10px",
+              fontSize: "var(--text-2xs)",
+              cursor: "pointer",
+            }}
+          >
+            {t(label)}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
 
 const styles: Record<string, CSSProperties> = {
   panel: {
@@ -251,7 +306,7 @@ function NotifRow({
             aria-hidden
             style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: "var(--radius-md)", background: "var(--surface-sunken)", color: "var(--text-strong)" }}
           >
-            <Icon name="calendar" size={16} />
+            <Icon name={notif.kind === "calendar_reminder" ? "calendar" : KIND_ICON[notif.kind]} size={16} />
           </span>
         ) : (
           <Avatar name={notif.actor} src={getAvatar(notif.actor)} size={32} presence={getPresence(notif.actor)} />
@@ -299,8 +354,11 @@ function NotifRow({
             : notif.preview}
         </span>
         <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
-          {notif.reminder ? [notif.spaceName, notif.reminder.calendarName].filter(Boolean).join(" · ") : notif.label} · {formatStamp(notif.createdAt)}
+          {notif.reminder ? [...new Set([notif.spaceName, notif.reminder.calendarName].filter(Boolean))].join(" · ") : notif.label} · {formatStamp(notif.createdAt)}
         </span>
+        {notif.kind === "calendar_invitation" && notif.reminder?.eventId && notif.reminder.myStatus ? (
+          <InboxAnswer eventId={notif.reminder.eventId} current={notif.reminder.myStatus} />
+        ) : null}
       </span>
 
       <IconButton

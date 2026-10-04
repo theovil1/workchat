@@ -262,7 +262,13 @@
     "emailOff": "El resumen por correo está desactivado: no se envía ningún correo.",
     "reminder": "Recordatorio: {{title}}",
     "kindReminders": "Recordatorios de agenda",
-    "kindRemindersDesc": "Antes de un evento de tus calendarios, según el aviso elegido."
+    "kindRemindersDesc": "Antes de un evento de tus calendarios, según el aviso elegido.",
+    "invitation": "{{actor}} te invita a «{{title}}»",
+    "invitationUpdate": "{{actor}} ha modificado «{{title}}»",
+    "invitationCancel": "{{actor}} ha cancelado «{{title}}»",
+    "invitationDeclined": "{{actor}} ha rechazado «{{title}}»",
+    "kindInvitations": "Invitaciones de agenda",
+    "kindInvitationsDesc": "Cuando te invitan a un evento, cuando cambia o se cancela, y cuando alguien rechaza una de tus invitaciones."
   },
   "switcher": {
     "title": "Ir a una conversación",
@@ -1641,6 +1647,57 @@
       "workRange": "Desde qué hora hasta qué hora"
     },
     "searchCalendar": "Buscar un calendario",
-    "noCalendarFound": "Ningún calendario coincide."
+    "noCalendarFound": "Ningún calendario coincide.",
+    "me": "Yo",
+    "attendees": "Invitados",
+    "addAttendees": "Añadir invitados (nombre o dirección)",
+    "inviteByEmail": "Invitar a {{email}} por correo",
+    "removeAttendee": "Quitar a {{name}}",
+    "availability": "Disponibilidad",
+    "busyDuring": "{{name}} ya tiene algo a esa hora",
+    "freeDuring": "{{name}} está libre a esa hora",
+    "busyPeople": "Ya ocupados a esa hora: {{names}}",
+    "findSlot": "Buscar un hueco",
+    "noSlot": "Ningún hueco en que todos estén libres en los próximos 14 días.",
+    "organizedBy": "Organizado por {{name}}",
+    "yourAnswer": "Tu respuesta",
+    "answerSeries": "Para todas las fechas",
+    "answerThisDate": "Para esta fecha",
+    "invitations": "Invitaciones recibidas",
+    "countAccepted_one": "{{count}} sí",
+    "countAccepted_many": "{{count}} sí",
+    "countAccepted_other": "{{count}} sí",
+    "countTentative_one": "{{count}} quizá",
+    "countTentative_many": "{{count}} quizá",
+    "countTentative_other": "{{count}} quizá",
+    "countDeclined_one": "{{count}} no",
+    "countDeclined_many": "{{count}} no",
+    "countDeclined_other": "{{count}} no",
+    "countWaiting_one": "{{count}} pendiente",
+    "countWaiting_many": "{{count}} pendientes",
+    "countWaiting_other": "{{count}} pendientes",
+    "answer": {
+      "accepted": "Sí",
+      "tentative": "Quizá",
+      "declined": "No"
+    },
+    "status": {
+      "accepted": "Asiste",
+      "tentative": "Quizá asista",
+      "declined": "No asiste",
+      "needs_action": "Aún no ha respondido"
+    }
+  },
+  "invitationPage": {
+    "title": "Invitación",
+    "from": "{{organizer}} te invita",
+    "loading": "Cargando la invitación…",
+    "goneTitle": "Invitación no encontrada",
+    "gone": "Este enlace ya no lleva a una invitación: puede que el evento se haya cancelado.",
+    "recurring": "Este evento se repite: tu respuesta vale para todas las fechas.",
+    "question": "{{name}}, ¿estarás?",
+    "saved": "Respuesta guardada. Puedes cambiarla cuando quieras con este enlace.",
+    "failed": "No se ha podido guardar tu respuesta, inténtalo más tarde.",
+    "footer": "Ruchoir, el espacio de trabajo del equipo que te invita."
   }
 }

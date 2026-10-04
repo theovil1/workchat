@@ -9,10 +9,11 @@ const SETTLE_MS = 250;
 
 /**
  * What the calendar screen shows: the viewer's calendars, and the occurrences of the period on screen
- * in the calendars they have not hidden. Both reload when the realtime connection says a calendar
+ * in the calendars they have not hidden, with what they are invited to from calendars they do not see
+ * unless they hid that too. Both reload when the realtime connection says a calendar
  * changed (someone else's edit, or this person's on another device).
  */
-export function useCalendarData(range: { from: string; to: string }) {
+export function useCalendarData(range: { from: string; to: string }, invitations = true) {
   const [calendars, setCalendars] = useState<Calendar[] | null>(null);
   const [occurrences, setOccurrences] = useState<Occurrence[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -51,7 +52,7 @@ export function useCalendarData(range: { from: string; to: string }) {
     // Not loaded yet, or every calendar hidden: nothing to ask for.
     if (!shownKey) return;
     const abort = new AbortController();
-    listOccurrences(range.from, range.to, shownKey.split(","), abort.signal)
+    listOccurrences(range.from, range.to, shownKey.split(","), abort.signal, invitations)
       .then((found) => {
         setOccurrences(found);
         setFailed(false);
@@ -60,7 +61,7 @@ export function useCalendarData(range: { from: string; to: string }) {
         if ((err as Error)?.name !== "AbortError") setFailed(true);
       });
     return () => abort.abort();
-  }, [range.from, range.to, shownKey, version]);
+  }, [range.from, range.to, shownKey, version, invitations]);
 
   return { calendars, occurrences: shownKey === "" ? [] : occurrences, failed, reload, setCalendars };
 }

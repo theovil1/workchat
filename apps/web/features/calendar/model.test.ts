@@ -141,3 +141,15 @@ test("free_slots_skip_the_busy_hours_and_the_closed_ones", () => {
   // Nothing fits: nothing proposed.
   assert.deepEqual(freeSlots([], { ...opts, duration: 600, from: "2026-10-19T08:00:00Z" }), []);
 });
+
+test("a_commitment_is_never_struck_through_by_the_filter", () => {
+  const calendars = [{ id: "velo", spaceId: "s2" }];
+  const space = { kind: "space" as const, spaceId: "s1" };
+  // Invited from another space, and going (or not answered yet): drawn in full.
+  assert.equal(inFilter({ calendarId: "velo", myStatus: "accepted" }, calendars, space), true);
+  assert.equal(inFilter({ calendarId: "velo", myStatus: "needs_action" }, calendars, space), true);
+  // Declined: as anything else outside the filter.
+  assert.equal(inFilter({ calendarId: "velo", myStatus: "declined" }, calendars, space), false);
+  // Seen through an invitation alone, from a calendar the viewer does not see.
+  assert.equal(inFilter({ calendarId: "someone", invited: true, myStatus: "tentative" }, calendars, space), true);
+});

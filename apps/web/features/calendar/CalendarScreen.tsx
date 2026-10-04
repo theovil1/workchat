@@ -31,13 +31,17 @@ import {
 } from "./model";
 import { MiniMonth } from "./MiniMonth";
 import { MonthView } from "./MonthView";
-import type { ChipLook } from "./OccurrenceChip";
+import { INVITATIONS_COLOR, type ChipLook } from "./OccurrenceChip";
 import { rowWeek, weekDays } from "./prefs";
 import { TimeGrid } from "./TimeGrid";
 import { useCalendarData } from "./useCalendarData";
 
 /** Where the phone's tab keeps the last filter chosen. */
 const FILTER_KEY = "ruchoir.calendar.filter";
+
+/** Where the device keeps whether the invitations from others' calendars are hidden. */
+const INVITATIONS_KEY = "ruchoir.calendar.invitationsHidden";
+
 
 function storedFilter(): Filter | null {
   try {
@@ -56,6 +60,8 @@ export type CalendarScreenProps = {
   compact: boolean;
   /** The viewer's time zone: their profile's, else the browser's. */
   timeZone: string;
+  /** The viewer's own id: theirs is the first line of an event's availability. */
+  viewerId?: string;
   spaces: { id: string; name: string }[];
   /** The space the screen was opened from: its filter at first. */
   spaceId?: string;
@@ -83,6 +89,7 @@ export type CalendarScreenProps = {
 export function CalendarScreen({
   compact,
   timeZone,
+  viewerId,
   spaces,
   spaceId,
   rememberFilter,
@@ -120,8 +127,26 @@ export function CalendarScreen({
     () => rangeFor(view, anchor, timeZone, prefs.weekStart),
     [view, anchor, timeZone, prefs.weekStart],
   );
+  const [invitationsHidden, setInvitationsHidden] = useState(() => {
+    try {
+      return localStorage.getItem(INVITATIONS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleInvitations = () => {
+    setInvitationsHidden((hidden) => {
+      try {
+        localStorage.setItem(INVITATIONS_KEY, hidden ? "0" : "1");
+      } catch {
+        // No storage: the choice lasts as long as the screen.
+      }
+      return !hidden;
+    });
+  };
   const { calendars, occurrences, failed, reload, setCalendars } =
-    useCalendarData(range);
+    useCalendarData(range, !invitationsHidden);
+  const hasInvitations = invitationsHidden || (occurrences ?? []).some((o) => o.invited);
 
   // Once the focused event's day is loaded, open it, once.
   const focused = useRef(false);
@@ -160,8 +185,10 @@ export function CalendarScreen({
   );
   const lookOf = useCallback(
     (o: Occurrence): ChipLook => ({
-      color: byId.get(o.calendarId)?.color,
+      color: o.invited ? INVITATIONS_COLOR : byId.get(o.calendarId)?.color,
       dimmed: !inFilter(o, chipCalendars, filter),
+      // An attendee's answer shows; "accepted" (an organiser's too) looks as any event.
+      status: o.myStatus,
     }),
     [byId, chipCalendars, filter],
   );
@@ -171,12 +198,13 @@ export function CalendarScreen({
   );
   const calendarName = useCallback(
     (o: Occurrence) => {
+      if (o.invited) return t("calendar.invitations");
       const calendar = byId.get(o.calendarId);
       if (!calendar) return "";
       const space = spaceName(calendar.spaceId);
       return space && space !== calendar.name ? `${space} · ${calendar.name}` : calendar.name;
     },
-    [byId, spaceName],
+    [byId, spaceName, t],
   );
   // Only the spaces the viewer has calendars in can be picked.
   const chipSpaces = spaces.filter((s) =>
@@ -350,6 +378,7 @@ export function CalendarScreen({
         calendars={calendars}
         spaces={spaces}
         currentSpaceId={currentSpaceId}
+        invitations={hasInvitations ? { hidden: invitationsHidden, color: INVITATIONS_COLOR, onToggle: toggleInvitations } : undefined}
         onToggle={toggle}
         onToggleMany={toggleMany}
         onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
@@ -595,6 +624,7 @@ export function CalendarScreen({
               calendars={calendars}
               spaces={spaces}
               currentSpaceId={currentSpaceId}
+              invitations={hasInvitations ? { hidden: invitationsHidden, color: INVITATIONS_COLOR, onToggle: toggleInvitations } : undefined}
               onToggle={toggle}
               onToggleMany={toggleMany}
               onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
@@ -622,6 +652,7 @@ export function CalendarScreen({
             calendars={calendars}
             filter={filter}
             currentSpaceId={currentSpaceId}
+            viewerId={viewerId}
             opened={opened}
             draft={draft}
             settings={settings}

@@ -1578,6 +1578,8 @@ type NotificationDto = {
   event_all_day?: boolean;
   event_location?: string;
   calendar_name?: string;
+  event_changes?: string[];
+  event_my_status?: "needs_action" | "accepted" | "tentative" | "declined";
   actor_id?: string;
   actor_name?: string;
   preview: string;
@@ -1609,11 +1611,15 @@ export type ReminderInfo = {
   allDay: boolean;
   location?: string;
   calendarName?: string;
+  /** For a change: what changed (`time`, `location`). */
+  changes?: string[];
+  /** For an invitation kind: the reader's answer as it stands. */
+  myStatus?: "needs_action" | "accepted" | "tentative" | "declined";
 };
 
 export type ApiNotification = {
   id: string;
-  kind: "mention" | "broadcast" | "reply" | "dm" | "message" | "calendar_reminder";
+  kind: "mention" | "broadcast" | "reply" | "dm" | "message" | "calendar_reminder" | "calendar_invitation" | "calendar_update" | "calendar_cancel" | "calendar_declined";
   conversationId: string;
   /** The space it happened in, so the inbox can be shown for the space on screen. */
   spaceId: string;
@@ -1627,8 +1633,8 @@ export type ApiNotification = {
   /** When the triggering message was sent, RFC 3339. */
   createdAt: string;
   read: boolean;
-  /** Set for a calendar reminder, whose conversation, message and (for a personal calendar) space
-   *  are empty strings. */
+  /** Set for a calendar reminder or an invitation kind, whose conversation, message and (for a
+   *  personal calendar) space are empty strings. */
   reminder?: ReminderInfo;
 };
 
@@ -1644,8 +1650,8 @@ function toApiNotification(dto: NotificationDto): ApiNotification {
     dto.kind === "reply" ||
     dto.kind === "dm" ||
     dto.kind === "message" ||
-    dto.kind === "calendar_reminder"
-      ? dto.kind
+    dto.kind.startsWith("calendar_")
+      ? (dto.kind as ApiNotification["kind"])
       : "mention";
   return {
     id: dto.id,
@@ -1655,16 +1661,19 @@ function toApiNotification(dto: NotificationDto): ApiNotification {
     channelName: dto.channel_name,
     spaceName: dto.space_name,
     messageId: dto.message_id ?? "",
-    ...(dto.kind === "calendar_reminder" && dto.event_id
+    ...(dto.kind.startsWith("calendar_") && (dto.event_id || dto.event_title)
       ? {
           reminder: {
-            eventId: dto.event_id,
+            // Empty for a cancellation that outlived its event.
+            eventId: dto.event_id ?? "",
             recurrenceId: dto.recurrence_id,
             title: dto.event_title ?? "",
             start: dto.event_start ?? dto.created_at,
             allDay: dto.event_all_day === true,
             location: dto.event_location,
             calendarName: dto.calendar_name,
+            changes: dto.event_changes,
+            myStatus: dto.event_my_status,
           },
         }
       : {}),
@@ -1752,6 +1761,9 @@ export type NotificationPreferences = {
   /** Calendar reminders, in the app and by push, and by mail. */
   calendarReminders: boolean;
   emailCalendarReminders: boolean;
+  /** Calendar invitations and what follows them, in the app and by push, and by mail. */
+  calendarInvitations: boolean;
+  emailCalendarInvitations: boolean;
 };
 
 /** Each field and its name on the wire, so the two directions of the mapping cannot drift. */
@@ -1775,6 +1787,8 @@ const NOTIFICATION_FIELDS: [keyof NotificationPreferences, string][] = [
   ["emailMessages", "email_messages"],
   ["calendarReminders", "calendar_reminders"],
   ["emailCalendarReminders", "email_calendar_reminders"],
+  ["calendarInvitations", "calendar_invitations"],
+  ["emailCalendarInvitations", "email_calendar_invitations"],
 ];
 
 /** `GET /me/notification-preferences`. */

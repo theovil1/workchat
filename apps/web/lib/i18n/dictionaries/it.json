@@ -262,7 +262,13 @@
     "emailOff": "Il riepilogo via e-mail è disattivato: non viene inviata alcuna e-mail.",
     "reminder": "Promemoria: {{title}}",
     "kindReminders": "Promemoria del calendario",
-    "kindRemindersDesc": "Prima di un evento dei tuoi calendari, come scelto."
+    "kindRemindersDesc": "Prima di un evento dei tuoi calendari, come scelto.",
+    "invitation": "{{actor}} ti invita a «{{title}}»",
+    "invitationUpdate": "{{actor}} ha modificato «{{title}}»",
+    "invitationCancel": "{{actor}} ha annullato «{{title}}»",
+    "invitationDeclined": "{{actor}} ha rifiutato «{{title}}»",
+    "kindInvitations": "Inviti del calendario",
+    "kindInvitationsDesc": "Quando vieni invitato a un evento, quando cambia o viene annullato, e quando qualcuno rifiuta uno dei tuoi inviti."
   },
   "switcher": {
     "title": "Vai a una conversazione",
@@ -1641,6 +1647,57 @@
       "workRange": "Da che ora a che ora"
     },
     "searchCalendar": "Cerca un calendario",
-    "noCalendarFound": "Nessun calendario corrisponde."
+    "noCalendarFound": "Nessun calendario corrisponde.",
+    "me": "Io",
+    "attendees": "Invitati",
+    "addAttendees": "Aggiungi invitati (nome o indirizzo)",
+    "inviteByEmail": "Invita {{email}} per e-mail",
+    "removeAttendee": "Rimuovi {{name}}",
+    "availability": "Disponibilità",
+    "busyDuring": "{{name}} ha già un impegno a quell'ora",
+    "freeDuring": "{{name}} non ha impegni a quell'ora",
+    "busyPeople": "Già occupati a quell'ora: {{names}}",
+    "findSlot": "Trova un orario",
+    "noSlot": "Nessun orario in cui tutti siano liberi nei prossimi 14 giorni.",
+    "organizedBy": "Organizzato da {{name}}",
+    "yourAnswer": "La tua risposta",
+    "answerSeries": "Per tutte le date",
+    "answerThisDate": "Per questa data",
+    "invitations": "Inviti ricevuti",
+    "countAccepted_one": "{{count}} sì",
+    "countAccepted_many": "{{count}} sì",
+    "countAccepted_other": "{{count}} sì",
+    "countTentative_one": "{{count}} forse",
+    "countTentative_many": "{{count}} forse",
+    "countTentative_other": "{{count}} forse",
+    "countDeclined_one": "{{count}} no",
+    "countDeclined_many": "{{count}} no",
+    "countDeclined_other": "{{count}} no",
+    "countWaiting_one": "{{count}} in attesa",
+    "countWaiting_many": "{{count}} in attesa",
+    "countWaiting_other": "{{count}} in attesa",
+    "answer": {
+      "accepted": "Sì",
+      "tentative": "Forse",
+      "declined": "No"
+    },
+    "status": {
+      "accepted": "Partecipa",
+      "tentative": "Forse partecipa",
+      "declined": "Non partecipa",
+      "needs_action": "Non ha ancora risposto"
+    }
+  },
+  "invitationPage": {
+    "title": "Invito",
+    "from": "{{organizer}} ti invita",
+    "loading": "Caricamento dell'invito…",
+    "goneTitle": "Invito non trovato",
+    "gone": "Questo link non porta più a un invito: forse l'evento è stato annullato.",
+    "recurring": "Questo evento si ripete: la tua risposta vale per tutte le date.",
+    "question": "{{name}}, ci sarai?",
+    "saved": "Risposta salvata. Puoi cambiarla in qualsiasi momento con questo link.",
+    "failed": "Non è stato possibile salvare la risposta, riprova più tardi.",
+    "footer": "Ruchoir, lo spazio di lavoro del team che ti invita."
   }
 }

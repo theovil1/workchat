@@ -262,7 +262,13 @@
     "emailOff": "Email catch-up is off: no email is sent.",
     "reminder": "Reminder: {{title}}",
     "kindReminders": "Calendar reminders",
-    "kindRemindersDesc": "Before an event of your calendars, as you chose."
+    "kindRemindersDesc": "Before an event of your calendars, as you chose.",
+    "invitation": "{{actor}} invites you to “{{title}}”",
+    "invitationUpdate": "{{actor}} changed “{{title}}”",
+    "invitationCancel": "{{actor}} cancelled “{{title}}”",
+    "invitationDeclined": "{{actor}} declined “{{title}}”",
+    "kindInvitations": "Calendar invitations",
+    "kindInvitationsDesc": "When you are invited to an event, when it changes or is cancelled, and when someone declines one of your invitations."
   },
   "switcher": {
     "title": "Go to a conversation",
@@ -1581,6 +1587,53 @@
       "workRange": "From when to when"
     },
     "searchCalendar": "Search a calendar",
-    "noCalendarFound": "No calendar matches."
+    "noCalendarFound": "No calendar matches.",
+    "me": "Me",
+    "attendees": "Guests",
+    "addAttendees": "Add guests (name or address)",
+    "inviteByEmail": "Invite {{email}} by email",
+    "removeAttendee": "Remove {{name}}",
+    "availability": "Availability",
+    "busyDuring": "{{name}} already has something then",
+    "freeDuring": "{{name}} is free then",
+    "busyPeople": "Already busy then: {{names}}",
+    "findSlot": "Find a time",
+    "noSlot": "No time when everyone is free in the next 14 days.",
+    "organizedBy": "Organised by {{name}}",
+    "yourAnswer": "Your answer",
+    "answerSeries": "For every date",
+    "answerThisDate": "For this date",
+    "invitations": "Invitations received",
+    "countAccepted_one": "{{count}} yes",
+    "countAccepted_other": "{{count}} yes",
+    "countTentative_one": "{{count}} maybe",
+    "countTentative_other": "{{count}} maybe",
+    "countDeclined_one": "{{count}} no",
+    "countDeclined_other": "{{count}} no",
+    "countWaiting_one": "{{count}} waiting",
+    "countWaiting_other": "{{count}} waiting",
+    "answer": {
+      "accepted": "Yes",
+      "tentative": "Maybe",
+      "declined": "No"
+    },
+    "status": {
+      "accepted": "Going",
+      "tentative": "Maybe going",
+      "declined": "Not going",
+      "needs_action": "Not answered yet"
+    }
+  },
+  "invitationPage": {
+    "title": "Invitation",
+    "from": "{{organizer}} invites you",
+    "loading": "Loading the invitation…",
+    "goneTitle": "Invitation not found",
+    "gone": "This link no longer leads to an invitation: the event may have been cancelled.",
+    "recurring": "This event repeats: your answer is for every date.",
+    "question": "{{name}}, will you be there?",
+    "saved": "Answer saved. You can change it at any time with this link.",
+    "failed": "Could not save your answer just now, try again later.",
+    "footer": "Ruchoir, the workspace of the team inviting you."
   }
 }

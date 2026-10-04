@@ -110,13 +110,16 @@ export function rangeFor(view: View, anchor: string, tz: string, weekStart = 1):
   return { from: zonedTime(first, 0, tz), to: zonedTime(addDays(first, days), 0, tz) };
 }
 
-/** Whether an occurrence is shown in full under `filter`. A personal calendar always is; outside the
- *  filter, the others are drawn struck through, not hidden. */
+/** Whether an occurrence is shown in full under `filter`. A personal calendar always is, and so is
+ *  an invitation the viewer did not decline; outside the filter, the others are drawn struck
+ *  through, not hidden. */
 export function inFilter(
-  occurrence: { calendarId: string },
+  occurrence: { calendarId: string; myStatus?: string; invited?: boolean },
   calendars: ReadonlyArray<{ id: string; spaceId?: string }>,
   filter: Filter,
 ): boolean {
+  // What the viewer is invited to and did not decline is theirs, wherever it comes from.
+  if (occurrence.myStatus && occurrence.myStatus !== "declined") return true;
   const calendar = calendars.find((c) => c.id === occurrence.calendarId);
   if (!calendar) return false;
   if (!calendar.spaceId || filter.kind === "all") return true;

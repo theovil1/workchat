@@ -1835,8 +1835,9 @@ function AppShell() {
     () =>
       notifs.filter(
         (n) =>
-          // A reminder from a personal calendar belongs to no space: every space shows it.
-          (n.spaceId === ws || (n.kind === "calendar_reminder" && !n.spaceId)) &&
+          // A reminder or an invitation from a personal calendar belongs to no space: every space
+          // shows it.
+          (n.spaceId === ws || (Boolean(n.reminder) && !n.spaceId)) &&
           passesPref(n, channelPrefs[n.channelId], settings.notif, wsNotifyLevel),
       ),
     [notifs, ws, channelPrefs, settings.notif, wsNotifyLevel],
@@ -4077,6 +4078,7 @@ function AppShell() {
           focus={calendarFocus ?? undefined}
           compact={compact}
           timeZone={viewerTimeZone}
+          viewerId={session?.id}
           spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
           spaceId={ws}
           spaceName={wsName}
@@ -4530,6 +4532,7 @@ function AppShell() {
             focus={calendarFocus ?? undefined}
             compact
             timeZone={viewerTimeZone}
+            viewerId={session?.id}
             spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
             rememberFilter
             onNotify={showToast}

@@ -4,6 +4,7 @@ import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useStat
 import { Button, Dialog, Icon, type IconName, Input, Popover, Select, Switch, Textarea } from "@/components/ds";
 import {
   createEvent,
+  freeBusy,
   listOccurrences,
   updateEvent,
   type Calendar,
@@ -15,10 +16,12 @@ import {
 import { useSettings } from "@/features/app/settings";
 import { useTranslation } from "@/lib/i18n";
 import { currentLocale } from "@/lib/i18n/current";
-import { clock } from "./format";
-import { addDays, clashes, localDay, localMinutes, zonedTime } from "./model";
+import { clock, shortDay } from "./format";
+import { addDays, clashes, freeSlots, localDay, localMinutes, zonedTime } from "./model";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 import { reminderOptions, reminderValue } from "./reminders";
+import { AttendeesField, type DraftAttendee } from "./AttendeesField";
+import { AvailabilityStrip } from "./AvailabilityStrip";
 import { CalendarPicker } from "./CalendarPicker";
 import { buildRule, formFor, parseRule, presetOf, presetRule, type Preset, type RuleForm } from "./rule";
 import { rulePhrase } from "./rulePhrase";
@@ -59,6 +62,8 @@ export type EventFormProps = {
   spaces: { id: string; name: string }[];
   /** The space the screen is on: its calendars are offered right after the viewer's own. */
   currentSpaceId?: string;
+  /** The viewer, first on the availability strip. */
+  viewerId?: string;
   timeZone: string;
   /** A new event: where it starts, and in which calendar it goes first. */
   draft?: { day: string; minutes?: number; calendarId?: string; at?: { x: number; y: number } };
@@ -78,9 +83,10 @@ export type EventFormProps = {
  * the window's content while it is set, rather than lengthening it. On a phone the form is a short
  * panel of compact lines, the place and notes folded until asked for.
  */
-export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone, draft, editing, onDone, onCancel }: EventFormProps) {
+export function EventForm({ compact, calendars, spaces, currentSpaceId, viewerId, timeZone, draft, editing, onDone, onCancel }: EventFormProps) {
   const { t } = useTranslation();
-  const duration = useSettings().calendar.duration;
+  const prefs = useSettings().calendar;
+  const duration = prefs.duration;
   const writable = calendars.filter((c) => c.canWriteEvents);
   const occurrence = editing?.occurrence;
   const event = editing?.event;
@@ -131,6 +137,14 @@ export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone
   const [mode, setMode] = useState<"quick" | "full">(draft?.at && !compact ? "quick" : "full");
   const [panel, setPanel] = useState<"main" | "rule">("main");
   const [more, setMore] = useState(Boolean(occurrence?.location || occurrence?.description));
+  // Who is invited; sent only when touched, so a change elsewhere leaves the list as it is.
+  const [attendees, setAttendees] = useState<DraftAttendee[]>(() =>
+    (event?.attendees ?? []).map((a) => ({ key: a.id, userId: a.userId, email: a.email, name: a.name, status: a.status })),
+  );
+  const [attendeesTouched, setAttendeesTouched] = useState(false);
+  const [busyNames, setBusyNames] = useState<string[]>([]);
+  const [slots, setSlots] = useState<{ start: string; end: string }[] | null>(null);
+  const [finding, setFinding] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   // The title takes the focus once its window is in place: the bubble is measured hidden first, and
   // a hidden field cannot take it.
@@ -182,7 +196,17 @@ export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone
 
   const input = (): EventInput | string => {
     if (!title.trim()) return t("calendar.titleRequired");
-    const base = { title: title.trim(), description: description.trim() || undefined, location: location.trim() || undefined, rrule: rule() };
+    const list =
+      attendeesTouched || (!occurrence && attendees.length > 0)
+        ? attendees.map((a) => (a.userId ? { userId: a.userId } : { email: a.email ?? a.name, name: a.email === a.name ? undefined : a.name }))
+        : undefined;
+    const base = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      location: location.trim() || undefined,
+      rrule: rule(),
+      attendees: list,
+    };
     const withReminder = reminder === undefined ? {} : { reminderMinutes: reminderValue(reminder) };
     if (allDay) {
       if (endDay < startDay) return t("calendar.endBeforeStart");
@@ -344,17 +368,111 @@ export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone
     </div>
   );
 
+  const othersBusy = busyNames.filter((n) => n !== t("calendar.me"));
   const clashLine =
-    clash && clash.length > 0 ? (
+    (clash && clash.length > 0) || othersBusy.length > 0 ? (
       <p role="status" style={{ margin: 0, display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 10px", borderRadius: "var(--radius-sm)", background: "color-mix(in srgb, var(--bee) 22%, transparent)", color: "var(--text-strong)", fontSize: "var(--text-xs)" }}>
         <Icon name="alert-triangle" size={14} style={{ flex: "none", marginTop: 1 }} />
-        <span>
-          {clash.length === 1
-            ? t("calendar.clash", { count: 1, title: clash[0].title, where: calendarLabel(clash[0].calendarId), when: clashWhen(clash[0]) })
-            : t("calendar.clash", { count: clash.length, titles: clash.slice(0, 3).map((o) => o.title).join(", ") + (clash.length > 3 ? ", …" : "") })}
+        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {clash && clash.length > 0 ? (
+            <span>
+              {clash.length === 1
+                ? t("calendar.clash", { count: 1, title: clash[0].title, where: calendarLabel(clash[0].calendarId), when: clashWhen(clash[0]) })
+                : t("calendar.clash", { count: clash.length, titles: clash.slice(0, 3).map((o) => o.title).join(", ") + (clash.length > 3 ? ", …" : "") })}
+            </span>
+          ) : null}
+          {othersBusy.length > 0 ? <span>{t("calendar.busyPeople", { count: othersBusy.length, names: othersBusy.join(", ") })}</span> : null}
         </span>
       </p>
     ) : null;
+
+  // The availability of the viewer and the members invited, and slots when they are all free.
+  const members = attendees.filter((a) => a.userId);
+  const strip =
+    members.length > 0 && !allDay && spanKey ? (
+      <AvailabilityStrip
+        people={[...(viewerId ? [{ userId: viewerId, name: t("calendar.me") }] : []), ...members.map((a) => ({ userId: a.userId ?? "", name: a.name }))]}
+        day={startDay}
+        start={span.start}
+        end={span.end}
+        timeZone={tz}
+        excludeEvent={event?.eventId}
+        onBusy={setBusyNames}
+      />
+    ) : null;
+  const findSlot = async () => {
+    setFinding(true);
+    const people = [...(viewerId ? [viewerId] : []), ...members.map((a) => a.userId ?? "")];
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    const length = Math.max(15, Math.round((Date.parse(span.end) - Date.parse(span.start)) / 60_000));
+    try {
+      const found = await freeBusy(people, from, to, undefined, event?.eventId);
+      setSlots(
+        freeSlots(
+          found.flatMap((p) => p.busy),
+          {
+            from,
+            days: 14,
+            duration: length,
+            dayStart: prefs.workHours ? prefs.workStart : 8,
+            dayEnd: prefs.workHours ? prefs.workEnd : 19,
+            weekends: prefs.weekends,
+            tz,
+          },
+        ),
+      );
+    } catch {
+      setSlots([]);
+    } finally {
+      setFinding(false);
+    }
+  };
+  const applySlot = (slot: { start: string; end: string }) => {
+    setStartDay(localDay(slot.start, tz));
+    setStartTime(hhmm(localMinutes(slot.start, tz)));
+    setEndDay(localDay(slot.end, tz));
+    setEndTime(hhmm(localMinutes(slot.end, tz)));
+    setSlots(null);
+  };
+  const slotLabel = (slot: { start: string }) => {
+    const day = shortDay(localDay(slot.start, tz));
+    return `${day.weekday} ${day.date} · ${clock(slot.start, tz)}`;
+  };
+  const availability =
+    strip ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {strip}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <Button type="button" size="sm" variant="secondary" iconLeft="search" disabled={finding} onClick={() => void findSlot()}>
+            {t("calendar.findSlot")}
+          </Button>
+          {slots?.map((slot) => (
+            <button
+              key={slot.start}
+              type="button"
+              onClick={() => applySlot(slot)}
+              style={{ border: "1px solid var(--border-default)", background: "color-mix(in srgb, var(--acc) 30%, transparent)", color: "var(--text-strong)", borderRadius: 999, padding: "3px 10px", fontSize: "var(--text-xs)", cursor: "pointer" }}
+            >
+              {slotLabel(slot)}
+            </button>
+          ))}
+          {slots && slots.length === 0 ? <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{t("calendar.noSlot")}</span> : null}
+        </div>
+      </div>
+    ) : null;
+  const attendeesLine = (
+    <Line icon="users">
+      <AttendeesField
+        calendarId={calendarId}
+        value={attendees}
+        onChange={(next) => {
+          setAttendeesTouched(true);
+          setAttendees(next);
+        }}
+      />
+    </Line>
+  );
 
   const calendarSelect = (
     <CalendarPicker
@@ -520,6 +638,8 @@ export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone
           {allDaySwitch}
           {zoneLine}
           <Line icon="calendar">{calendarSelect}</Line>
+          {attendeesLine}
+          {availability}
           <Line icon="repeat">{repeatSelect}</Line>
           <Line icon="bell">{reminderSelect}</Line>
           {more ? (
@@ -547,6 +667,8 @@ export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone
         {titleInput(true)}
         {when}
         {clashLine}
+        {attendeesLine}
+        {availability}
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr)", gap: 20 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ padding: "4px 0" }}>{allDaySwitch}</div>
