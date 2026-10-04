@@ -50,12 +50,56 @@ export type Occurrence = {
   overridden: boolean;
   canEdit: boolean;
   myReminderMinutes?: number;
+  /** The viewer's answer for this occurrence; `accepted` for the organiser of an event with
+   *  attendees; absent for anyone not on its list. */
+  myStatus?: AttendeeStatus;
+  /** Seen through an invitation alone: its calendar is not the viewer's to see. */
+  invited: boolean;
+  hasAttendees: boolean;
 };
+
+/** An answer to an invitation. */
+export type AttendeeStatus = "needs_action" | "accepted" | "tentative" | "declined";
+
+export type Attendee = {
+  id: string;
+  userId?: string;
+  /** For someone invited by address only. */
+  email?: string;
+  name: string;
+  status: AttendeeStatus;
+};
+
+/** Someone on the list as the form sends it: an account, or an address. */
+export type AttendeeInput = { userId: string } | { email: string; name?: string };
 
 export type CalendarEvent = Occurrence & {
   rrule?: string;
   createdBy?: string;
   updatedAt: string;
+  organizer?: { userId: string; name: string };
+  attendees: Attendee[];
+};
+
+/** Someone who may be invited. */
+export type Invitee = { userId: string; name: string };
+
+/** One person's busy times, RFC 3339 in UTC, merged. */
+export type BusyTimes = { userId: string; busy: { start: string; end: string }[] };
+
+/** An invitation as someone invited by address sees it, on its public page. */
+export type PublicInvitation = {
+  title: string;
+  location?: string;
+  description?: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  tzid?: string;
+  recurring: boolean;
+  organizer?: string;
+  name?: string;
+  status: AttendeeStatus;
 };
 
 /** What the form sends for a new event or a change. */
@@ -72,6 +116,8 @@ export type EventInput = {
   reminderMinutes?: number | null;
   /** Another calendar to move the event to (whole-series changes only). */
   calendarId?: string;
+  /** The whole list of attendees; `undefined` leaves it as it is. */
+  attendees?: AttendeeInput[];
 };
 
 export type EditScope = "this" | "following" | "all";
@@ -114,12 +160,19 @@ type OccurrenceDto = {
   overridden: boolean;
   can_edit: boolean;
   my_reminder_minutes?: number | null;
+  my_status?: AttendeeStatus | null;
+  invited?: boolean;
+  has_attendees?: boolean;
 };
+
+type AttendeeDto = { id: string; user_id?: string | null; email?: string | null; name: string; status: AttendeeStatus };
 
 type EventDto = OccurrenceDto & {
   rrule?: string | null;
   created_by?: string | null;
   updated_at: string;
+  organizer?: { user_id: string; name: string } | null;
+  attendees?: AttendeeDto[];
 };
 
 type FeedDto = { id: string; calendar_id?: string | null; created_at: string; last_used_at?: string | null; url?: string };
@@ -161,6 +214,9 @@ function toOccurrence(dto: OccurrenceDto): Occurrence {
     overridden: dto.overridden,
     canEdit: dto.can_edit,
     myReminderMinutes: opt(dto.my_reminder_minutes),
+    myStatus: opt(dto.my_status),
+    invited: dto.invited ?? false,
+    hasAttendees: dto.has_attendees ?? false,
   };
 }
 
@@ -170,6 +226,14 @@ function toEvent(dto: EventDto): CalendarEvent {
     rrule: opt(dto.rrule),
     createdBy: opt(dto.created_by),
     updatedAt: dto.updated_at,
+    organizer: dto.organizer ? { userId: dto.organizer.user_id, name: dto.organizer.name } : undefined,
+    attendees: (dto.attendees ?? []).map((a) => ({
+      id: a.id,
+      userId: opt(a.user_id),
+      email: opt(a.email),
+      name: a.name,
+      status: a.status,
+    })),
   };
 }
 
@@ -189,6 +253,9 @@ function eventBody(input: EventInput) {
     rrule: input.rrule ?? null,
     ...(input.reminderMinutes !== undefined ? { reminder_minutes: input.reminderMinutes } : {}),
     calendar_id: input.calendarId,
+    ...(input.attendees
+      ? { attendees: input.attendees.map((a) => ("userId" in a ? { user_id: a.userId } : { email: a.email, name: a.name })) }
+      : {}),
   };
 }
 
@@ -243,10 +310,18 @@ export async function setCalendarMe(id: string, me: { hidden?: boolean; reminder
   });
 }
 
-/** What happens in `[from, to)`, in the given calendars (every visible one by default). */
-export async function listOccurrences(from: string, to: string, calendarIds?: string[], signal?: AbortSignal): Promise<Occurrence[]> {
+/** What happens in `[from, to)`, in the given calendars (every visible one by default), and the
+ *  events seen through an invitation alone unless `invitations` is false. */
+export async function listOccurrences(
+  from: string,
+  to: string,
+  calendarIds?: string[],
+  signal?: AbortSignal,
+  invitations = true,
+): Promise<Occurrence[]> {
   const params = new URLSearchParams({ from, to });
   if (calendarIds && calendarIds.length > 0) params.set("calendars", calendarIds.join(","));
+  if (!invitations) params.set("invitations", "false");
   return (await apiGet<OccurrenceDto[]>(`/calendar/occurrences?${params}`, signal)).map(toOccurrence);
 }
 
@@ -292,4 +367,65 @@ export async function createFeed(calendarId: string | null): Promise<CreatedFeed
 
 export async function revokeFeed(id: string): Promise<void> {
   await apiDelete<void>(`/calendar/feeds/${id}`);
+}
+
+/** Answer an invitation, for the series or for one date of it. */
+export async function respondToEvent(id: string, status: Exclude<AttendeeStatus, "needs_action">, recurrenceId?: string): Promise<CalendarEvent> {
+  return toEvent(await apiPut<EventDto>(`/events/${id}/response`, { status, recurrence_id: recurrenceId }));
+}
+
+/** Who may be invited to an event of this calendar, matching `query`. */
+export async function searchInvitees(calendarId: string, query: string, signal?: AbortSignal): Promise<Invitee[]> {
+  const params = new URLSearchParams({ q: query });
+  const found = await apiGet<{ user_id: string; name: string }[]>(`/calendars/${calendarId}/invitees?${params}`, signal);
+  return found.map((p) => ({ userId: p.user_id, name: p.name }));
+}
+
+/** When some people are busy over `[from, to)` (31 days at most). */
+export async function freeBusy(userIds: string[], from: string, to: string, signal?: AbortSignal): Promise<BusyTimes[]> {
+  const found = await apiRequest<{ user_id: string; busy: { start: string; end: string }[] }[]>("POST", "/calendar/freebusy", {
+    json: { users: userIds, from, to },
+    signal,
+  });
+  return found.map((p) => ({ userId: p.user_id, busy: p.busy }));
+}
+
+type PublicInvitationDto = {
+  title: string;
+  location?: string | null;
+  description?: string | null;
+  start: string;
+  end: string;
+  all_day: boolean;
+  tzid?: string | null;
+  recurring: boolean;
+  organizer?: string | null;
+  name?: string | null;
+  status: AttendeeStatus;
+};
+
+function toPublicInvitation(dto: PublicInvitationDto): PublicInvitation {
+  return {
+    title: dto.title,
+    location: opt(dto.location),
+    description: opt(dto.description),
+    start: dto.start,
+    end: dto.end,
+    allDay: dto.all_day,
+    tzid: opt(dto.tzid),
+    recurring: dto.recurring,
+    organizer: opt(dto.organizer),
+    name: opt(dto.name),
+    status: dto.status,
+  };
+}
+
+/** `GET /public/invitation/{token}`: no session needed. A `404` means it is no longer there. */
+export async function readInvitation(token: string, signal?: AbortSignal): Promise<PublicInvitation> {
+  return toPublicInvitation(await apiGet<PublicInvitationDto>(`/public/invitation/${encodeURIComponent(token)}`, signal));
+}
+
+/** Answer an invitation from its public page, for every date. */
+export async function answerInvitation(token: string, status: Exclude<AttendeeStatus, "needs_action">): Promise<PublicInvitation> {
+  return toPublicInvitation(await apiPost<PublicInvitationDto>(`/public/invitation/${encodeURIComponent(token)}`, { status }));
 }

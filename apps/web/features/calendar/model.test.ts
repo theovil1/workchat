@@ -1,7 +1,7 @@
 // Run with `pnpm --filter @ruchoir/web test` (Node's own runner, types stripped by Node).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clashes, freeColor, inFilter, layoutDay, localDay, MIN_HEIGHT, occursOn, rangeFor, zonedTime } from "./model.ts";
+import { clashes, freeColor, freeSlots, inFilter, layoutDay, localDay, MIN_HEIGHT, occursOn, rangeFor, zonedTime } from "./model.ts";
 
 const PARIS = "Europe/Paris";
 
@@ -121,4 +121,23 @@ test("a_new_event_clashes_with_what_overlaps_it_in_any_calendar", () => {
   assert.deepEqual(clashes(found, ours, PARIS).map((o) => o.eventId), ["a", "d"]);
   // The event being edited does not clash with itself.
   assert.deepEqual(clashes(found, ours, PARIS, "a").map((o) => o.eventId), ["d"]);
+});
+
+test("free_slots_skip_the_busy_hours_and_the_closed_ones", () => {
+  const opts = { days: 14, duration: 60, dayStart: 9, dayEnd: 18, weekends: true, tz: PARIS };
+  // Monday 19 October, 10:00 in Paris; someone is busy until noon.
+  const busy = [{ start: "2026-10-19T08:00:00Z", end: "2026-10-19T10:00:00Z" }];
+  assert.deepEqual(
+    freeSlots(busy, { ...opts, from: "2026-10-19T08:00:00Z" }).map((s) => s.start),
+    ["2026-10-19T10:00:00Z", "2026-10-19T11:00:00Z", "2026-10-19T12:00:00Z"],
+  );
+  // Friday evening, after hours and without the weekend: Monday morning, in winter time.
+  assert.deepEqual(
+    freeSlots([], { ...opts, weekends: false, from: "2026-10-23T16:30:00Z", limit: 1 }),
+    [{ start: "2026-10-26T08:00:00Z", end: "2026-10-26T09:00:00Z" }],
+  );
+  // A slot does not start in the past, and it is a whole half hour.
+  assert.equal(freeSlots([], { ...opts, from: "2026-10-19T08:10:00Z", limit: 1 })[0].start, "2026-10-19T08:30:00Z");
+  // Nothing fits: nothing proposed.
+  assert.deepEqual(freeSlots([], { ...opts, duration: 600, from: "2026-10-19T08:00:00Z" }), []);
 });

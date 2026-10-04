@@ -230,3 +230,35 @@ export function clashes<T extends { eventId: string; allDay: boolean; start: str
     return start < to && from < end;
   });
 }
+
+/**
+ * Up to `limit` slots of `duration` minutes when nobody in `busy` is taken, from `from` on, over
+ * `days` days: within `[dayStart, dayEnd)` hours of `tz`, on the half hour, without Saturday and
+ * Sunday unless `weekends`. The slots proposed do not overlap one another.
+ */
+export function freeSlots(
+  busy: ReadonlyArray<{ start: string; end: string }>,
+  opts: { from: string; days: number; duration: number; dayStart: number; dayEnd: number; weekends: boolean; tz: string; limit?: number },
+): { start: string; end: string }[] {
+  const limit = opts.limit ?? 3;
+  const from = Date.parse(opts.from);
+  const taken = busy.map((b) => [Date.parse(b.start), Date.parse(b.end)] as const);
+  const found: { start: string; end: string }[] = [];
+  const first = localDay(opts.from, opts.tz);
+  for (let d = 0; d < opts.days && found.length < limit; d += 1) {
+    const day = addDays(first, d);
+    if (!opts.weekends && weekdayOf(day) >= 5) continue;
+    let minutes = opts.dayStart * 60;
+    while (minutes + opts.duration <= opts.dayEnd * 60 && found.length < limit) {
+      const start = Date.parse(zonedTime(day, minutes, opts.tz));
+      const end = start + opts.duration * 60_000;
+      if (start >= from && !taken.some(([a, b]) => a < end && start < b)) {
+        found.push({ start: new Date(start).toISOString().replace(".000Z", "Z"), end: new Date(end).toISOString().replace(".000Z", "Z") });
+        minutes += opts.duration;
+      } else {
+        minutes += 30;
+      }
+    }
+  }
+  return found;
+}
