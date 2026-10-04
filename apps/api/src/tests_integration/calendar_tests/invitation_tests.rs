@@ -475,3 +475,89 @@ async fn attendees_change_only_when_sent() {
     assert!(cleared["attendees"].as_array().unwrap().is_empty());
     assert_eq!(cleared["my_status"], Value::Null);
 }
+
+/// An event starting `minutes` after `now`, with attendees, and a weekly rule when asked.
+async fn invited_event(
+    app: &TestApp,
+    cookie: &str,
+    calendar_id: &Value,
+    now: OffsetDateTime,
+    minutes: i64,
+    attendees: Value,
+    weekly: bool,
+) -> Value {
+    let start = now + time::Duration::minutes(minutes);
+    let mut body = json!({ "title": "Revue", "all_day": false, "start": rfc(start),
+        "end": rfc(start + time::Duration::minutes(30)), "tzid": "Europe/Paris",
+        "attendees": attendees });
+    if weekly {
+        body["rrule"] = json!("FREQ=WEEKLY");
+    }
+    let created = create_event(app, cookie, calendar_id, body).await;
+    assert_eq!(created.status(), 201);
+    created.json().await.expect("json")
+}
+
+#[tokio::test]
+async fn with_attendees_only_they_are_reminded() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let mine = personal_of(&app, &alice).await;
+    let now = sweep_moment(12);
+    let bob_only = json!([{ "user_id": fx.bob }]);
+
+    // A space event with attendees: its organiser and its attendees, not the rest of the space.
+    let space_event = invited_event(
+        &app,
+        &alice,
+        &general["id"],
+        now,
+        10,
+        bob_only.clone(),
+        false,
+    )
+    .await;
+    // A personal event: its invitee too, who does not see the calendar.
+    let personal = invited_event(&app, &alice, &mine["id"], now, 10, bob_only.clone(), false).await;
+    // Declined: not reminded.
+    let declined = invited_event(
+        &app,
+        &alice,
+        &general["id"],
+        now,
+        10,
+        bob_only.clone(),
+        false,
+    )
+    .await;
+    respond(
+        &app,
+        &bob,
+        &declined["event_id"],
+        json!({ "status": "declined" }),
+    )
+    .await;
+    // Declined for this date only.
+    let series = invited_event(&app, &alice, &general["id"], now, 10, bob_only, true).await;
+    respond(
+        &app,
+        &bob,
+        &series["event_id"],
+        json!({ "status": "declined", "recurrence_id": rfc(now + time::Duration::minutes(10)) }),
+    )
+    .await;
+
+    let report = crate::calendar::reminders::sweep(&app.state, now)
+        .await
+        .expect("sweep");
+    assert_eq!(
+        reminded(&report, &space_event),
+        sorted(vec![fx.alice, fx.bob])
+    );
+    assert_eq!(reminded(&report, &personal), sorted(vec![fx.alice, fx.bob]));
+    assert_eq!(reminded(&report, &declined), vec![fx.alice]);
+    assert_eq!(reminded(&report, &series), vec![fx.alice]);
+}
