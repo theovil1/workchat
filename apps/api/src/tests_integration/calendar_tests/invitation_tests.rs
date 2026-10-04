@@ -561,3 +561,157 @@ async fn with_attendees_only_they_are_reminded() {
     assert_eq!(reminded(&report, &declined), vec![fx.alice]);
     assert_eq!(reminded(&report, &series), vec![fx.alice]);
 }
+
+async fn freebusy(app: &TestApp, cookie: &str, users: Value) -> reqwest::Response {
+    app.req(reqwest::Method::POST, "/api/v1/calendar/freebusy", cookie)
+        .json(&json!({ "users": users, "from": "2026-10-20T00:00:00Z", "to": "2026-10-21T00:00:00Z" }))
+        .send()
+        .await
+        .expect("freebusy")
+}
+
+fn slot(title: &str, start: &str, end: &str, attendees: Value) -> Value {
+    json!({ "title": title, "all_day": false, "start": start, "end": end,
+            "tzid": "Europe/Paris", "attendees": attendees })
+}
+
+#[tokio::test]
+async fn freebusy_hides_titles_and_strangers() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let dave = make_user(&app.db, "dave").await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let bobs = personal_of(&app, &bob).await;
+
+    // Bob's own calendar: busy, twice, overlapping.
+    create_event(
+        &app,
+        &bob,
+        &bobs["id"],
+        slot(
+            "Dentiste",
+            "2026-10-20T08:00:00Z",
+            "2026-10-20T09:00:00Z",
+            json!([]),
+        ),
+    )
+    .await;
+    create_event(
+        &app,
+        &bob,
+        &bobs["id"],
+        slot(
+            "Trajet",
+            "2026-10-20T08:30:00Z",
+            "2026-10-20T09:30:00Z",
+            json!([]),
+        ),
+    )
+    .await;
+    // A space event that asks nothing of him: not busy.
+    create_event(
+        &app,
+        &alice,
+        &general["id"],
+        slot(
+            "Congé Carol",
+            "2026-10-20T10:00:00Z",
+            "2026-10-20T11:00:00Z",
+            json!([]),
+        ),
+    )
+    .await;
+    // Invited and not declined: busy. Declined: free.
+    create_event(
+        &app,
+        &alice,
+        &general["id"],
+        slot(
+            "Revue",
+            "2026-10-20T12:00:00Z",
+            "2026-10-20T13:00:00Z",
+            json!([{ "user_id": fx.bob }]),
+        ),
+    )
+    .await;
+    let declined: Value = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        slot(
+            "Comité",
+            "2026-10-20T14:00:00Z",
+            "2026-10-20T15:00:00Z",
+            json!([{ "user_id": fx.bob }]),
+        ),
+    )
+    .await
+    .json()
+    .await
+    .expect("json");
+    respond(
+        &app,
+        &bob,
+        &declined["event_id"],
+        json!({ "status": "declined" }),
+    )
+    .await;
+    // Organising an event with attendees makes Alice busy.
+    let answer = freebusy(&app, &alice, json!([fx.bob, fx.alice])).await;
+    assert_eq!(answer.status(), 200);
+    let answer: Value = answer.json().await.expect("json");
+    let text = answer.to_string();
+    assert!(
+        !text.contains("Dentiste") && !text.contains("Revue"),
+        "no titles: {text}"
+    );
+    let busy_of = |user: Uuid| -> Vec<(String, String)> {
+        answer
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["user_id"] == user.to_string())
+            .expect("a person")["busy"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| {
+                (
+                    b["start"].as_str().unwrap().to_owned(),
+                    b["end"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        busy_of(fx.bob),
+        vec![
+            (
+                "2026-10-20T08:00:00Z".to_owned(),
+                "2026-10-20T09:30:00Z".to_owned()
+            ),
+            (
+                "2026-10-20T12:00:00Z".to_owned(),
+                "2026-10-20T13:00:00Z".to_owned()
+            ),
+        ]
+    );
+    assert_eq!(
+        busy_of(fx.alice),
+        vec![
+            (
+                "2026-10-20T12:00:00Z".to_owned(),
+                "2026-10-20T13:00:00Z".to_owned()
+            ),
+            (
+                "2026-10-20T14:00:00Z".to_owned(),
+                "2026-10-20T15:00:00Z".to_owned()
+            ),
+        ]
+    );
+
+    // Someone sharing no space with the caller is not anyone's business.
+    assert_eq!(freebusy(&app, &alice, json!([dave])).await.status(), 403);
+}

@@ -12,6 +12,7 @@ pub(crate) mod dto;
 pub(crate) mod error;
 pub(crate) mod events;
 pub(crate) mod feeds;
+pub(crate) mod freebusy;
 pub(crate) mod ics;
 pub(crate) mod occurrences;
 pub(crate) mod recurrence;
