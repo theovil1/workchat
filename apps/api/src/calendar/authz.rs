@@ -110,6 +110,18 @@ pub async fn access<C: ConnectionTrait>(
     }
 }
 
+/// A calendar, whoever asks: for telling its audience something happened from outside (a guest
+/// answering through a link).
+pub async fn access_any<C: ConnectionTrait>(
+    db: &C,
+    calendar_id: Uuid,
+) -> Result<calendars::Model, CalendarError> {
+    calendars::Entity::find_by_id(calendar_id)
+        .one(db)
+        .await?
+        .ok_or(CalendarError::NotFound)
+}
+
 /// Every calendar `user_id` sees: their own, then their spaces'. Creates the defaults that are
 /// missing on the way.
 pub async fn visible<C: ConnectionTrait>(

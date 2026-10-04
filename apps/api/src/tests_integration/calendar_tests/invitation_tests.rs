@@ -828,3 +828,129 @@ async fn notifications_follow_invitations() {
     assert_eq!(carols[0]["event_title"], "Revue");
     assert_eq!(carols[0]["actor_name"], "alice");
 }
+
+#[tokio::test]
+async fn an_external_answers_through_the_link() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let general = space_default(&app, &alice, fx.space_id).await;
+    let created: Value = create_event(
+        &app,
+        &alice,
+        &general["id"],
+        meeting(
+            "Revue",
+            json!([{ "email": "client@outside.test", "name": "Client" }]),
+        ),
+    )
+    .await
+    .json()
+    .await
+    .expect("json");
+    let event_id: Uuid = created["event_id"].as_str().unwrap().parse().unwrap();
+    let row = crate::entities::calendar_event_attendees::Entity::find()
+        .filter(crate::entities::calendar_event_attendees::Column::EventId.eq(event_id))
+        .one(&app.db)
+        .await
+        .expect("query")
+        .expect("the attendee");
+    let token = crate::calendar::attendees::token_of(&app.state.secret_key, &row).expect("token");
+    let page = format!("/api/v1/public/invitation/{token}");
+
+    let read = app
+        .http
+        .get(format!("{}{page}", app.base))
+        .send()
+        .await
+        .expect("read");
+    assert_eq!(read.status(), 200);
+    let read: Value = read.json().await.expect("json");
+    assert_eq!(read["title"], "Revue");
+    assert_eq!(read["organizer"], "alice");
+    assert_eq!(read["status"], "needs_action");
+    assert_eq!(read["name"], "Client");
+    assert_eq!(read["start"], "2026-10-20T08:00:00Z");
+
+    // A change keeps the same link.
+    let mut renamed = meeting("Revue client", json!([{ "email": "client@outside.test" }]));
+    renamed["location"] = json!("Salle Ouest");
+    assert_eq!(
+        edit(&app, &alice, &created["event_id"], "", renamed)
+            .await
+            .status(),
+        200
+    );
+    let answered = app
+        .http
+        .post(format!("{}{page}", app.base))
+        .json(&json!({ "status": "declined" }))
+        .send()
+        .await
+        .expect("answer");
+    assert_eq!(answered.status(), 200);
+    let answered: Value = answered.json().await.expect("json");
+    assert_eq!(answered["status"], "declined");
+    assert_eq!(answered["title"], "Revue client");
+    assert_eq!(answered["location"], "Salle Ouest");
+
+    // The organiser hears of the refusal, under the name it was given.
+    let alices = calendar_inbox(&app, &alice).await;
+    assert_eq!(alices[0]["kind"], "calendar_declined");
+    assert_eq!(alices[0]["actor_name"], "Client");
+
+    let bad = app
+        .http
+        .post(format!("{}{page}", app.base))
+        .json(&json!({ "status": "maybe" }))
+        .send()
+        .await
+        .expect("answer");
+    assert_eq!(bad.status(), 422);
+    let unknown = app
+        .http
+        .get(format!(
+            "{}/api/v1/public/invitation/0123456789abcdef",
+            app.base
+        ))
+        .send()
+        .await
+        .expect("read");
+    assert_eq!(unknown.status(), 404);
+}
+
+#[tokio::test]
+async fn the_feed_names_the_organizer_and_the_attendees() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let bob = app.cookie_for(fx.bob).await;
+    let mine = personal_of(&app, &alice).await;
+    create_event(
+        &app,
+        &alice,
+        &mine["id"],
+        meeting(
+            "Déjeuner",
+            json!([{ "user_id": fx.bob }, { "email": "client@outside.test", "name": "Client" }]),
+        ),
+    )
+    .await;
+
+    // Bob's address for all his calendars brings the invitation, with who organises and who comes.
+    let (_, path) = subscribe(&app, &bob, Value::Null).await;
+    let (status, text) = fetch_feed(&app, &path).await;
+    assert_eq!(status, 200);
+    assert!(text.contains("SUMMARY:Déjeuner"), "{text}");
+    assert!(text.contains("ORGANIZER;CN=alice:mailto:"), "{text}");
+    assert!(
+        text.contains(&format!(
+            "ATTENDEE;CN=bob;PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT:urn:uuid:{}",
+            fx.bob
+        )),
+        "{text}"
+    );
+    assert!(text.contains("ATTENDEE;CN=Client;PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT:mailto:client@outside.test"), "{text}");
+    // A member's address is not handed out.
+    assert!(!text.contains("bob-"), "{text}");
+}

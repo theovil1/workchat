@@ -162,17 +162,9 @@ fn put_people(event: &mut Event, people: Option<&People>) {
 }
 
 /// Render a calendar: `name` as clients show it, `color` one of the palette's names (none for the
-/// address that mixes several calendars), and each event with its exceptions.
-pub fn render(
-    name: &str,
-    color: Option<&str>,
-    events: &[(calendar_events::Model, Vec<exceptions::Model>)],
-) -> String {
-    render_with(name, color, events, &std::collections::HashMap::new(), None)
-}
-
-/// [`render`], with each event's organiser and attendees, and a `METHOD` for a message (`REQUEST`
-/// for an invitation or a change, `CANCEL` for a cancellation, whose events are marked cancelled).
+/// address that mixes several calendars), each event with its exceptions, organiser and attendees,
+/// and a `METHOD` for a message (`REQUEST` for an invitation or a change, `CANCEL` for a
+/// cancellation, whose events are marked cancelled).
 pub fn render_with(
     name: &str,
     color: Option<&str>,

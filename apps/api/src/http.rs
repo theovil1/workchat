@@ -269,7 +269,10 @@ pub fn router(state: AppState) -> Router {
         crate::files::links::public_router().layer(GovernorLayer::new(links_governor.clone()));
     // Calendar subscriptions answer without a session too: a guessed token is limited the same way.
     let public_feeds =
-        crate::calendar::feeds::public_router().layer(GovernorLayer::new(links_governor));
+        crate::calendar::feeds::public_router().layer(GovernorLayer::new(links_governor.clone()));
+    // So does the page someone invited by address answers on.
+    let public_invitations =
+        crate::calendar::invitation_page::public_router().layer(GovernorLayer::new(links_governor));
 
     let mut router = Router::new()
         .route("/healthz", get(healthz))
@@ -278,6 +281,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/openapi.json", get(crate::openapi::openapi_json))
         .nest("/api/v1/auth", auth_routes)
         .merge(public_links)
+        .merge(public_invitations)
         .merge(public_feeds)
         // The messaging REST surface and the real-time transport use absolute `/api/v1/...` paths
         // and merge in here. Both are guarded per request by the `AuthSession` extractor, so no

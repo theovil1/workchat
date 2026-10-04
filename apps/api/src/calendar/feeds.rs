@@ -24,7 +24,7 @@ use uuid::Uuid;
 use super::authz;
 use super::error::CalendarError;
 use super::events::instant_text;
-use super::ics;
+use super::{attendees, ics, invitations};
 use crate::auth::extract::AuthSession;
 use crate::auth::tokens;
 use crate::entities::{
@@ -178,6 +178,7 @@ pub async fn serve_feed(
         .await?
         .ok_or(CalendarError::NotFound)?;
 
+    let mixed = row.calendar_id.is_none();
     let (name, color, calendars) = match row.calendar_id {
         Some(calendar_id) => {
             let access = authz::access(&state.db, row.user_id, calendar_id).await?;
@@ -197,11 +198,28 @@ pub async fn serve_feed(
             (MIXED_NAME.to_owned(), None, ids)
         }
     };
+    // The address for all of someone's calendars also carries what they are invited to from
+    // calendars they do not see.
+    let invited: Vec<uuid::Uuid> = if mixed {
+        let seen = calendars.iter().copied().collect();
+        attendees::invited_events(&state.db, row.user_id, &seen)
+            .await?
+            .into_iter()
+            .map(|(event, _)| event.id)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let events = calendar_events::Entity::find()
-        .filter(calendar_events::Column::CalendarId.is_in(calendars))
+        .filter(
+            sea_orm::Condition::any()
+                .add(calendar_events::Column::CalendarId.is_in(calendars))
+                .add(calendar_events::Column::Id.is_in(invited)),
+        )
         .order_by_asc(calendar_events::Column::CreatedAt)
         .all(&state.db)
         .await?;
+    let people = invitations::people_of(&state.db, &events).await?;
     let mut by_event: HashMap<Uuid, Vec<exceptions::Model>> = HashMap::new();
     for row in exceptions::Entity::find()
         .filter(exceptions::Column::EventId.is_in(events.iter().map(|e| e.id)))
@@ -217,7 +235,7 @@ pub async fn serve_feed(
             (event, rows)
         })
         .collect();
-    let body = ics::render(&name, color.as_deref(), &pairs);
+    let body = ics::render_with(&name, color.as_deref(), &pairs, &people, None);
 
     let now = OffsetDateTime::now_utc();
     if row
