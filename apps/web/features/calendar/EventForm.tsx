@@ -19,7 +19,7 @@ import { clock } from "./format";
 import { addDays, clashes, localDay, localMinutes, zonedTime } from "./model";
 import { RecurrenceEditor } from "./RecurrenceEditor";
 import { reminderOptions, reminderValue } from "./reminders";
-import { colorVar } from "./OccurrenceChip";
+import { CalendarPicker } from "./CalendarPicker";
 import { buildRule, formFor, parseRule, presetOf, presetRule, type Preset, type RuleForm } from "./rule";
 import { rulePhrase } from "./rulePhrase";
 import { SeriesScopeDialog } from "./SeriesScopeDialog";
@@ -57,6 +57,8 @@ export type EventFormProps = {
   compact: boolean;
   calendars: Calendar[];
   spaces: { id: string; name: string }[];
+  /** The space the screen is on: its calendars are offered right after the viewer's own. */
+  currentSpaceId?: string;
   timeZone: string;
   /** A new event: where it starts, and in which calendar it goes first. */
   draft?: { day: string; minutes?: number; calendarId?: string; at?: { x: number; y: number } };
@@ -76,7 +78,7 @@ export type EventFormProps = {
  * the window's content while it is set, rather than lengthening it. On a phone the form is a short
  * panel of compact lines, the place and notes folded until asked for.
  */
-export function EventForm({ compact, calendars, spaces, timeZone, draft, editing, onDone, onCancel }: EventFormProps) {
+export function EventForm({ compact, calendars, spaces, currentSpaceId, timeZone, draft, editing, onDone, onCancel }: EventFormProps) {
   const { t } = useTranslation();
   const duration = useSettings().calendar.duration;
   const writable = calendars.filter((c) => c.canWriteEvents);
@@ -167,10 +169,6 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
   const clashWhen = (o: Occurrence) => (o.allDay ? t("calendar.allDay") : `${clock(o.start, tz)} - ${clock(o.end, tz)}`);
 
   const spaceName = (id?: string) => spaces.find((s) => s.id === id)?.name;
-  const calendarGroups = [
-    { label: t("calendar.mine"), items: writable.filter((c) => !c.spaceId) },
-    ...spaces.map((s) => ({ label: s.name, items: writable.filter((c) => c.spaceId === s.id) })),
-  ].filter((g) => g.items.length > 0);
 
   /** The last second of a day in the event's zone, in UTC, as a timed rule's UNTIL writes it. */
   const endOfDay = (day: string) =>
@@ -286,7 +284,6 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
     );
   }
 
-  const chosen = writable.find((c) => c.id === calendarId);
   const errorLine = error ? (
     <p role="alert" style={{ margin: 0, color: "var(--action-danger-bg)", fontSize: "var(--text-xs)" }}>
       {error}
@@ -360,25 +357,15 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
     ) : null;
 
   const calendarSelect = (
-    <Select
+    <CalendarPicker
       id="event-calendar"
-      size="sm"
-      aria-label={t("calendar.title")}
+      calendars={writable}
+      spaces={spaces}
       value={calendarId}
-      onChange={(e) => setCalendarId(e.target.value)}
+      currentSpaceId={currentSpaceId}
+      onChange={setCalendarId}
       disabled={Boolean(event?.isRecurring && occurrence?.recurrenceId)}
-      style={{ width: "100%" }}
-    >
-      {calendarGroups.map((g) => (
-        <optgroup key={g.label} label={g.label}>
-          {g.items.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.spaceId && c.name !== spaceName(c.spaceId) ? `${spaceName(c.spaceId) ?? ""} · ${c.name}` : c.name}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </Select>
+    />
   );
 
   const repeatSelect = (
@@ -467,7 +454,7 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
           >
             {titleInput(true)}
             {when}
-            <Line swatch={colorVar(chosen?.color)}>{calendarSelect}</Line>
+            <Line icon="calendar">{calendarSelect}</Line>
             {clashLine}
             {errorLine}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -532,7 +519,7 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
           {clashLine}
           {allDaySwitch}
           {zoneLine}
-          <Line swatch={colorVar(chosen?.color)}>{calendarSelect}</Line>
+          <Line icon="calendar">{calendarSelect}</Line>
           <Line icon="repeat">{repeatSelect}</Line>
           <Line icon="bell">{reminderSelect}</Line>
           {more ? (
@@ -568,7 +555,7 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
             <Line icon="bell">{reminderSelect}</Line>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Line swatch={colorVar(chosen?.color)}>{calendarSelect}</Line>
+            <Line icon="calendar">{calendarSelect}</Line>
             <Line icon="map-pin">{placeInput}</Line>
             <div style={{ ...line, alignItems: "flex-start" }}>
               <span aria-hidden style={{ ...lineIcon, paddingTop: 8 }}>

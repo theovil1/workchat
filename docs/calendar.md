@@ -66,7 +66,9 @@ audience, and open screens reload.
   screen was opened from a space, a searchable list of spaces from the phone's tab.
 - **New events** start from a small bubble beside the slot clicked (title, times, calendar), which
   opens into the full window; the window is laid out not to scroll, and the custom repetition takes
-  its place while it is set. Hovering an empty slot shows what a click would create. Every form warns
+  its place while it is set. The calendar is chosen from a list laid out as the column is (the
+  viewer's own, the current space, the others), with colours and a search. Hovering an empty slot
+  shows what a click would create. Every form warns
   (without refusing) when the event overlaps another one, in any calendar the viewer sees.
 - **The theme's accent** marks what is chosen: the view, the filter, today, and what the small month
   shows (a faint band for the week on screen, a faint pill for a single day).

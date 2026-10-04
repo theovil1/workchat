@@ -1598,6 +1598,8 @@
       "durationHours_other": "{{count}} h",
       "durationHoursMinutes": "{{h}} h {{m}}",
       "workRange": "De quelle heure à quelle heure"
-    }
+    },
+    "searchCalendar": "Rechercher un agenda",
+    "noCalendarFound": "Aucun agenda ne correspond."
   }
 }

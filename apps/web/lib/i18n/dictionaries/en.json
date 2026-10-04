@@ -1579,6 +1579,8 @@
       "durationHours_other": "{{count}} hours",
       "durationHoursMinutes": "{{h}} h {{m}} min",
       "workRange": "From when to when"
-    }
+    },
+    "searchCalendar": "Search a calendar",
+    "noCalendarFound": "No calendar matches."
   }
 }

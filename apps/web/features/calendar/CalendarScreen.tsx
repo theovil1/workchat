@@ -621,6 +621,7 @@ export function CalendarScreen({
             spaces={spaces}
             calendars={calendars}
             filter={filter}
+            currentSpaceId={currentSpaceId}
             opened={opened}
             draft={draft}
             settings={settings}

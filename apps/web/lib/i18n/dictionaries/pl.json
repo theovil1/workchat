@@ -1699,6 +1699,8 @@
       "durationHours_other": "{{count}} godziny",
       "durationHoursMinutes": "{{h}} godz. {{m}} min",
       "workRange": "Od której do której"
-    }
+    },
+    "searchCalendar": "Szukaj kalendarza",
+    "noCalendarFound": "Żaden kalendarz nie pasuje."
   }
 }
