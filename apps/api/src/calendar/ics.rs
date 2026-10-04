@@ -13,7 +13,8 @@ use super::events::when_of;
 use super::recurrence::{self, RecurrenceId, When};
 use crate::entities::{calendar_event_exceptions as exceptions, calendar_events};
 
-/// The hexadecimal value of each palette colour, for the clients that show it.
+/// The hexadecimal value of each palette colour, for the clients that show it. `accent` has no
+/// value of its own outside Ruchoir, and goes out as the default accent, sky.
 pub fn color_hex(color: &str) -> &'static str {
     match color {
         "sky" => "#8fd0ff",

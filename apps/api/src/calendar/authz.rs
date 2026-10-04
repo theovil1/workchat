@@ -12,6 +12,8 @@
 //! Default calendars are created where they are first needed: a space's when the space is created
 //! (and, for spaces that came another way, such as an import, the first time a member lists their
 //! calendars), a person's the first time they list theirs. Both inserts tolerate a concurrent twin.
+//! A space's default calendar carries the space's name, and follows it when the space is renamed
+//! until someone names the calendar otherwise; a person's wears their theme's accent.
 
 use std::collections::HashMap;
 
@@ -23,8 +25,16 @@ use uuid::Uuid;
 use super::error::CalendarError;
 use crate::entities::{calendars, space_members, users};
 
-/// The pastels a calendar may wear, the design system's own.
-pub const PALETTE: [&str; 7] = ["sky", "mint", "violet", "pink", "peach", "lime", "sun"];
+/// The colours a calendar may wear: the design system's pastels, or `accent`, which each viewer
+/// sees in their own theme's accent.
+pub const PALETTE: [&str; 8] = [
+    "sky", "mint", "violet", "pink", "peach", "lime", "sun", "accent",
+];
+
+/// The order in which new space calendars take their colour: the least used among the creator's
+/// spaces wins, ties going to the first here. Sky, the default accent, comes last so a space rarely
+/// looks like the personal calendar.
+const SPACE_COLOURS: [&str; 7] = ["mint", "violet", "peach", "lime", "sun", "pink", "sky"];
 
 /// Roles that see a space's calendars.
 const SEEING_ROLES: [&str; 3] = ["member", "admin", "owner"];
@@ -57,15 +67,15 @@ impl CalendarAccess {
     }
 }
 
-/// The names of a space's default calendar and of a person's, in a language of the interface.
-pub fn default_names(locale: Option<&str>) -> (&'static str, &'static str) {
+/// The name of a person's own calendar, in a language of the interface.
+pub fn personal_name(locale: Option<&str>) -> &'static str {
     match locale {
-        Some("fr") => ("Général", "Perso"),
-        Some("es") => ("General", "Personal"),
-        Some("de") => ("Allgemein", "Persönlich"),
-        Some("it") => ("Generale", "Personale"),
-        Some("pl") => ("Ogólny", "Osobisty"),
-        _ => ("General", "Personal"),
+        Some("fr") => "Personnel",
+        Some("es") => "Personal",
+        Some("de") => "Persönlich",
+        Some("it") => "Personale",
+        Some("pl") => "Osobisty",
+        _ => "Personal",
     }
 }
 
@@ -190,12 +200,12 @@ pub async fn ensure_personal<C: ConnectionTrait>(
         .one(db)
         .await?
         .and_then(|u| u.locale);
-    let (_, name) = default_names(locale.as_deref());
+    let name = personal_name(locale.as_deref());
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO calendars (id, owner_user_id, name, color, default_reminder_minutes, \
                                 is_default, created_by) \
-         VALUES ($1, $2, $3, 'sky', 10, true, $2) \
+         VALUES ($1, $2, $3, 'accent', 10, true, $2) \
          ON CONFLICT (owner_user_id) WHERE is_default AND owner_user_id IS NOT NULL DO NOTHING",
         [Uuid::new_v4().into(), user_id.into(), name.into()],
     ))
@@ -203,7 +213,8 @@ pub async fn ensure_personal<C: ConnectionTrait>(
     find().one(db).await?.ok_or(CalendarError::Internal)
 }
 
-/// A space's first calendar, named in the language of its first owner (or of `created_by`).
+/// A space's first calendar, named after the space, in the colour its first owner (or
+/// `created_by`) uses least among their spaces' calendars.
 pub async fn create_space_default<C: ConnectionTrait>(
     db: &C,
     space_id: Uuid,
@@ -218,27 +229,51 @@ pub async fn create_space_default<C: ConnectionTrait>(
             .await?
             .map(|m| m.user_id),
     };
-    let locale = match owner {
-        Some(user) => users::Entity::find_by_id(user)
-            .one(db)
-            .await?
-            .and_then(|u| u.locale),
-        None => None,
-    };
-    let (name, _) = default_names(locale.as_deref());
+    let colours = SPACE_COLOURS
+        .iter()
+        .map(|c| format!("'{c}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "INSERT INTO calendars (id, space_id, name, color, write_access, \
-                                default_reminder_minutes, is_default, created_by) \
-         VALUES ($1, $2, $3, 'mint', 'members', 10, true, $4) \
-         ON CONFLICT (space_id) WHERE is_default AND space_id IS NOT NULL DO NOTHING",
-        [
-            Uuid::new_v4().into(),
-            space_id.into(),
-            name.into(),
-            owner.into(),
-        ],
+        format!(
+            "INSERT INTO calendars (id, space_id, name, color, write_access, \
+                                    default_reminder_minutes, is_default, created_by) \
+             SELECT $1, s.id, left(s.name, 200), \
+                    (SELECT p.color FROM unnest(ARRAY[{colours}]) WITH ORDINALITY AS p (color, ord) \
+                     ORDER BY (SELECT count(*) FROM calendars c \
+                               JOIN space_members m ON m.space_id = c.space_id \
+                               WHERE m.user_id = $3 AND c.color = p.color), p.ord \
+                     LIMIT 1), \
+                    'members', 10, true, $3 \
+             FROM spaces s WHERE s.id = $2 \
+             ON CONFLICT (space_id) WHERE is_default AND space_id IS NOT NULL DO NOTHING"
+        ),
+        [Uuid::new_v4().into(), space_id.into(), owner.into()],
     ))
     .await?;
     Ok(())
+}
+
+/// A space renamed from `old` to `new`: its default calendar takes the new name, unless someone
+/// had named it otherwise. Returns the calendar when it changed, for its audience to be told.
+pub async fn follow_space_name<C: ConnectionTrait>(
+    db: &C,
+    space_id: Uuid,
+    old: &str,
+    new: &str,
+) -> Result<Option<calendars::Model>, CalendarError> {
+    let Some(calendar) = calendars::Entity::find()
+        .filter(calendars::Column::SpaceId.eq(space_id))
+        .filter(calendars::Column::IsDefault.eq(true))
+        .filter(calendars::Column::Name.eq(old))
+        .one(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let mut active: calendars::ActiveModel = calendar.into();
+    active.name = sea_orm::ActiveValue::Set(new.chars().take(200).collect());
+    active.updated_at = sea_orm::ActiveValue::Set(time::OffsetDateTime::now_utc());
+    Ok(Some(sea_orm::ActiveModelTrait::update(active, db).await?))
 }

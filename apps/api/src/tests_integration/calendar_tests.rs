@@ -59,28 +59,123 @@ async fn create_space_calendar(
     .expect("create calendar")
 }
 
+/// A space created through the API, as its owner sees it in the response.
+async fn create_space(app: &TestApp, cookie: &str, prefix: &str) -> Value {
+    let created = app
+        .req(reqwest::Method::POST, "/api/v1/spaces", cookie)
+        .json(&json!({ "name": format!("{prefix} {}", Uuid::new_v4().simple()) }))
+        .send()
+        .await
+        .expect("create space");
+    assert_eq!(created.status(), 201);
+    created.json().await.expect("json")
+}
+
+async fn rename_space(app: &TestApp, cookie: &str, space: &Value, name: &str) {
+    let response = app
+        .req(
+            reqwest::Method::PATCH,
+            &format!("/api/v1/spaces/{}", space["id"].as_str().expect("id")),
+            cookie,
+        )
+        .json(&json!({ "name": name }))
+        .send()
+        .await
+        .expect("rename space");
+    assert_eq!(response.status(), 200);
+}
+
+async fn default_of(app: &TestApp, cookie: &str, space: &Value) -> Value {
+    calendars_of(app, cookie)
+        .await
+        .into_iter()
+        .find(|c| c["space_id"] == space["id"] && c["is_default"] == true)
+        .expect("the space's default calendar")
+}
+
 #[tokio::test]
-async fn a_space_starts_with_a_general_calendar_and_a_person_gets_a_personal_one_on_first_visit() {
+async fn each_new_space_gets_a_colour_its_owner_does_not_use_yet() {
+    let Some(app) = boot().await else { return };
+    let alice = make_user(&app.db, "alice").await;
+    let cookie = app.cookie_for(alice).await;
+
+    let mut colours = Vec::new();
+    for _ in 0..6 {
+        let space = create_space(&app, &cookie, "Espace").await;
+        colours.push(default_of(&app, &cookie, &space).await["color"].clone());
+    }
+    let mut distinct = colours.clone();
+    distinct.sort_by_key(|c| c.to_string());
+    distinct.dedup();
+    assert_eq!(distinct.len(), 6, "six spaces, six colours: {colours:?}");
+    assert!(!colours.contains(&json!("accent")));
+}
+
+#[tokio::test]
+async fn a_space_default_calendar_follows_the_space_name_until_renamed_by_hand() {
+    let Some(app) = boot().await else { return };
+    let alice = make_user(&app.db, "alice").await;
+    let cookie = app.cookie_for(alice).await;
+
+    let space = create_space(&app, &cookie, "Atelier").await;
+    let fresh = format!("Studio {}", Uuid::new_v4().simple());
+    rename_space(&app, &cookie, &space, &fresh).await;
+    let calendar = default_of(&app, &cookie, &space).await;
+    assert_eq!(calendar["name"], fresh.as_str());
+
+    // Once someone names the calendar themselves, the space's name no longer carries over.
+    let renamed = app
+        .req(
+            reqwest::Method::PATCH,
+            &format!("/api/v1/calendars/{}", calendar["id"].as_str().expect("id")),
+            &cookie,
+        )
+        .json(&json!({ "name": "Planning" }))
+        .send()
+        .await
+        .expect("rename calendar");
+    assert_eq!(renamed.status(), 200);
+    rename_space(
+        &app,
+        &cookie,
+        &space,
+        &format!("Lumen {}", Uuid::new_v4().simple()),
+    )
+    .await;
+    assert_eq!(default_of(&app, &cookie, &space).await["name"], "Planning");
+}
+
+#[tokio::test]
+async fn a_calendar_may_follow_the_accent() {
+    let Some(app) = boot().await else { return };
+    let fx = seed(&app.db).await;
+    promote_to_admin(&app.db, fx.space_id, fx.alice).await;
+    let alice = app.cookie_for(fx.alice).await;
+    let made = create_space_calendar(
+        &app,
+        &alice,
+        fx.space_id,
+        json!({ "name": "Accent", "color": "accent" }),
+    )
+    .await;
+    assert_eq!(made.status(), 201);
+}
+
+#[tokio::test]
+async fn a_space_starts_with_a_calendar_named_after_it_and_a_person_gets_a_personal_one() {
     let Some(app) = boot().await else { return };
     let alice = make_user(&app.db, "alice").await;
     set_locale(&app.db, alice, "fr").await;
     let cookie = app.cookie_for(alice).await;
 
-    let created = app
-        .req(reqwest::Method::POST, "/api/v1/spaces", &cookie)
-        .json(&json!({ "name": format!("Atelier {}", Uuid::new_v4().simple()) }))
-        .send()
-        .await
-        .expect("create space");
-    assert_eq!(created.status(), 201);
-    let space: Value = created.json().await.expect("json");
+    let space = create_space(&app, &cookie, "Atelier").await;
 
     let calendars = calendars_of(&app, &cookie).await;
     let general = calendars
         .iter()
         .find(|c| c["space_id"] == space["id"])
         .expect("the space's calendar");
-    assert_eq!(general["name"], "Général");
+    assert_eq!(general["name"], space["name"]);
     assert_eq!(general["is_default"], true);
     assert_eq!(general["color"], "mint");
     assert_eq!(general["write_access"], "members");
@@ -94,8 +189,9 @@ async fn a_space_starts_with_a_general_calendar_and_a_person_gets_a_personal_one
         .filter(|c| c["space_id"].is_null())
         .collect();
     assert_eq!(personal.len(), 1);
-    assert_eq!(personal[0]["name"], "Perso");
-    assert_eq!(personal[0]["color"], "sky");
+    assert_eq!(personal[0]["name"], "Personnel");
+    // The personal calendar wears the viewer's own accent, whichever it is.
+    assert_eq!(personal[0]["color"], "accent");
     assert_eq!(personal[0]["is_default"], true);
     assert_eq!(personal[0]["default_reminder_minutes"], 10);
 

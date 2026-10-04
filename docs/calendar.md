@@ -5,10 +5,13 @@ subscription. Why recurring events are stored the way they are: [ADR 0004](adr/0
 
 ## Calendars and who does what
 
-- **A personal calendar** belongs to one person and nobody else sees it. Everyone has one ("Perso",
-  named in their language), created the first time they open the calendar, and may make more.
+- **A personal calendar** belongs to one person and nobody else sees it. Everyone has one ("Personnel",
+  named in their language, in the colour `accent`: each viewer's own theme accent), created the
+  first time they open the calendar, and may make more.
 - **A space calendar** is seen by the space's members (`member`, `admin`, `owner`); a guest sees none.
-  Each space starts with one ("Général", in its owner's language). Its administrators make more,
+  Each space starts with one, named after the space (it follows a rename of the space until someone
+  names it otherwise), in the colour its creator uses least among their spaces, so two spaces rarely
+  look alike. Its administrators make more,
   rename, recolour and delete them, and choose for each **who adds events**: every member, or
   administrators only.
 - A calendar someone cannot see answers `404`, exactly like one that does not exist. A space's first

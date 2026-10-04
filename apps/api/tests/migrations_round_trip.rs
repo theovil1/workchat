@@ -97,7 +97,9 @@ async fn existing_spaces_receive_a_default_calendar() {
             "00000000-0000-0000-0000-0000000000b3",
         ),
     ];
-    for (user, locale, space) in people {
+    for (age, (user, locale, space)) in people.into_iter().enumerate() {
+        // The oldest space first, for the colours to be handed out in a known order.
+        let minutes = 10 - age;
         let sql_locale = if locale.is_empty() {
             "NULL".to_owned()
         } else {
@@ -110,7 +112,8 @@ async fn existing_spaces_receive_a_default_calendar() {
              VALUES ('{user}', '{user}@example.test', 'Owner', 'active', false, false, false, \
                      {sql_locale}, now(), now()); \
              INSERT INTO spaces (id, name, slug, created_at, updated_at) \
-             VALUES ('{space}', 'Space', 'space-{slug}', now(), now()); \
+             VALUES ('{space}', 'Atelier {slug}', 'space-{slug}', \
+                     now() - interval '{minutes} minutes', now()); \
              INSERT INTO space_members (space_id, user_id, role, joined_at) \
              VALUES ('{space}', '{user}', 'owner', now());"
         ))
@@ -140,11 +143,11 @@ async fn existing_spaces_receive_a_default_calendar() {
             )
         })
         .collect();
-    let expected = |slug: &str, name: &str| {
+    let expected = |slug: &str, name: &str, color: &str| {
         (
             slug.to_owned(),
             name.to_owned(),
-            "mint".to_owned(),
+            color.to_owned(),
             "members".to_owned(),
             Some(10),
         )
@@ -152,9 +155,10 @@ async fn existing_spaces_receive_a_default_calendar() {
     assert_eq!(
         found,
         vec![
-            expected("space-de", "Allgemein"),
-            expected("space-fr", "Général"),
-            expected("space-none", "General"),
+            // Named after their space, whatever their owner's language, in turn through the palette.
+            expected("space-de", "Atelier de", "violet"),
+            expected("space-fr", "Atelier fr", "mint"),
+            expected("space-none", "Atelier none", "peach"),
         ]
     );
 }

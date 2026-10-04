@@ -6,8 +6,10 @@
 //! so `conversation_id` and `message_id` become optional, with a CHECK that each kind carries the
 //! subject it needs.
 //!
-//! Every space that already exists receives its default calendar, named in the language of its
-//! first owner (English when none was chosen), with a ten-minute reminder by default.
+//! Every space that already exists receives its default calendar, named after the space, with a
+//! ten-minute reminder by default. The spaces take the palette's colours in turn, in the order they
+//! were created, so neighbours rarely look alike. `accent` is a colour too: each viewer sees it in
+//! their own theme's accent, which is what a person's own calendar wears.
 
 use sea_orm_migration::prelude::*;
 
@@ -21,7 +23,7 @@ CREATE TABLE calendars ( \
     owner_user_id uuid REFERENCES users (id) ON DELETE CASCADE, \
     name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 200), \
     description text, \
-    color text NOT NULL CHECK (color IN ('sky', 'mint', 'violet', 'pink', 'peach', 'lime', 'sun')), \
+    color text NOT NULL CHECK (color IN ('sky', 'mint', 'violet', 'pink', 'peach', 'lime', 'sun', 'accent')), \
     write_access text NOT NULL DEFAULT 'members' CHECK (write_access IN ('members', 'admins')), \
     default_reminder_minutes integer, \
     is_default boolean NOT NULL DEFAULT false, \
@@ -139,13 +141,13 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_subject_check CHECK ( \
 \
 INSERT INTO calendars (id, space_id, name, color, write_access, default_reminder_minutes, \
                        is_default, created_by, created_at, updated_at) \
-SELECT gen_random_uuid(), s.id, \
-       CASE o.locale WHEN 'fr' THEN 'Général' WHEN 'de' THEN 'Allgemein' \
-                     WHEN 'it' THEN 'Generale' WHEN 'pl' THEN 'Ogólny' ELSE 'General' END, \
-       'mint', 'members', 10, true, o.user_id, now(), now() \
+SELECT gen_random_uuid(), s.id, left(s.name, 200), \
+       (ARRAY['mint', 'violet', 'peach', 'lime', 'sun', 'pink', 'sky']) \
+           [(row_number() OVER (ORDER BY s.created_at, s.id) - 1) % 7 + 1], \
+       'members', 10, true, o.user_id, now(), now() \
 FROM spaces s \
 LEFT JOIN LATERAL ( \
-    SELECT m.user_id, u.locale FROM space_members m JOIN users u ON u.id = m.user_id \
+    SELECT m.user_id FROM space_members m \
     WHERE m.space_id = s.id AND m.role = 'owner' ORDER BY m.joined_at LIMIT 1 \
 ) o ON true;";
 
