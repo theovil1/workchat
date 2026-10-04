@@ -1372,5 +1372,39 @@
     "availableUntil": "Available until {{date}}",
     "footer": "Shared with Ruchoir, the European workspace.",
     "openDocument": "Open the document"
+  },
+  "calendar": {
+    "rule": {
+      "daily_one": "Every day",
+      "daily_other": "Every {{count}} days",
+      "weekly_one": "Every week on {{days}}",
+      "weekly_other": "Every {{count}} weeks on {{days}}",
+      "monthlyDay_one": "Every month on day {{day}}",
+      "monthlyDay_other": "Every {{count}} months on day {{day}}",
+      "monthlyNth_one": "On the {{nth}} {{day}} of every month",
+      "monthlyNth_other": "On the {{nth}} {{day}}, every {{count}} months",
+      "lastWorkday_one": "On the last working day of every month",
+      "lastWorkday_other": "On the last working day, every {{count}} months",
+      "yearly_one": "Every year on {{date}}",
+      "yearly_other": "Every {{count}} years on {{date}}",
+      "endCount_one": "once",
+      "endCount_other": "{{count}} times",
+      "workdays": "Monday to Friday",
+      "onDay": "{{day}}",
+      "nth1": "first",
+      "nth2": "second",
+      "nth3": "third",
+      "nth4": "fourth",
+      "nthLast": "last",
+      "endUntil": "until {{date}}",
+      "withEnd": "{{rule}}, {{end}}",
+      "mo": "Monday",
+      "tu": "Tuesday",
+      "we": "Wednesday",
+      "th": "Thursday",
+      "fr": "Friday",
+      "sa": "Saturday",
+      "su": "Sunday"
+    }
   }
 }

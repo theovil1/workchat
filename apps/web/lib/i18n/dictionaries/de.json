@@ -1372,5 +1372,39 @@
     "availableUntil": "Verfügbar bis {{date}}",
     "footer": "Geteilt mit Ruchoir, dem europäischen Arbeitsbereich.",
     "openDocument": "Dokument öffnen"
+  },
+  "calendar": {
+    "rule": {
+      "daily_one": "Jeden Tag",
+      "daily_other": "Alle {{count}} Tage",
+      "weekly_one": "Jede Woche am {{days}}",
+      "weekly_other": "Alle {{count}} Wochen am {{days}}",
+      "monthlyDay_one": "Jeden Monat am {{day}}.",
+      "monthlyDay_other": "Alle {{count}} Monate am {{day}}.",
+      "monthlyNth_one": "Am {{nth}} {{day}} jedes Monats",
+      "monthlyNth_other": "Am {{nth}} {{day}}, alle {{count}} Monate",
+      "lastWorkday_one": "Am letzten Werktag jedes Monats",
+      "lastWorkday_other": "Am letzten Werktag, alle {{count}} Monate",
+      "yearly_one": "Jedes Jahr am {{date}}",
+      "yearly_other": "Alle {{count}} Jahre am {{date}}",
+      "endCount_one": "einmal",
+      "endCount_other": "{{count}}-mal",
+      "workdays": "Montag bis Freitag",
+      "onDay": "{{day}}",
+      "nth1": "1.",
+      "nth2": "2.",
+      "nth3": "3.",
+      "nth4": "4.",
+      "nthLast": "letzten",
+      "endUntil": "bis {{date}}",
+      "withEnd": "{{rule}}, {{end}}",
+      "mo": "Montag",
+      "tu": "Dienstag",
+      "we": "Mittwoch",
+      "th": "Donnerstag",
+      "fr": "Freitag",
+      "sa": "Samstag",
+      "su": "Sonntag"
+    }
   }
 }
