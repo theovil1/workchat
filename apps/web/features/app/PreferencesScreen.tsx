@@ -270,6 +270,7 @@ const KINDS: {
   { label: key("notif.kindReplies"), desc: key("notif.kindRepliesDesc"), app: "replies", email: "emailReplies" },
   { label: key("sidebar.directMessages"), desc: key("notif.kindDmsDesc"), app: "directMessages", email: "emailDirectMessages" },
   { label: key("notif.kindMessages"), desc: key("notif.kindMessagesDesc"), app: "messages", email: "emailMessages" },
+  { label: key("notif.kindReminders"), desc: key("notif.kindRemindersDesc"), app: "calendarReminders", email: "emailCalendarReminders" },
 ];
 
 /**

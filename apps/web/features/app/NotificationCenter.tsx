@@ -5,7 +5,7 @@ import { Avatar, EmptyState, Icon, IconButton, Popover, Tabs } from "@/component
 import { getAvatar, getPresence } from "@/lib/data";
 import { type AppNotification, isMention, type NotifKind, notifSummary } from "./notifications";
 import { key, type TranslationKey, useTranslation } from "@/lib/i18n";
-import { formatStamp } from "@/lib/i18n/format";
+import { formatDate, formatDateTime, formatStamp } from "@/lib/i18n/format";
 
 const KIND_ICON: Record<NotifKind, string> = {
   mention: "at-sign",
@@ -16,6 +16,7 @@ const KIND_ICON: Record<NotifKind, string> = {
   dm: "mail",
   // Any other message, for someone who asked to hear about every one: the channel's own mark.
   message: "hash",
+  calendar_reminder: "calendar",
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -245,25 +246,36 @@ function NotifRow({
         }}
       />
       <span style={{ position: "relative", flex: "none" }}>
-        <Avatar name={notif.actor} src={getAvatar(notif.actor)} size={32} presence={getPresence(notif.actor)} />
+        {notif.reminder ? (
+          <span
+            aria-hidden
+            style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: "var(--radius-md)", background: "var(--surface-sunken)", color: "var(--text-strong)" }}
+          >
+            <Icon name="calendar" size={16} />
+          </span>
+        ) : (
+          <Avatar name={notif.actor} src={getAvatar(notif.actor)} size={32} presence={getPresence(notif.actor)} />
+        )}
+        {notif.reminder ? null : (
         <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: -3,
-            bottom: -3,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 16,
-            height: 16,
-            borderRadius: "var(--radius-full)",
-            background: "var(--surface-canvas)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <Icon name={KIND_ICON[notif.kind]} size={11} />
-        </span>
+            aria-hidden
+            style={{
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 16,
+              height: 16,
+              borderRadius: "var(--radius-full)",
+              background: "var(--surface-canvas)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <Icon name={KIND_ICON[notif.kind]} size={11} />
+          </span>
+        )}
       </span>
 
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -282,10 +294,12 @@ function NotifRow({
             color: "var(--text-body)",
           }}
         >
-          {notif.preview}
+          {notif.reminder
+            ? `${notif.reminder.allDay ? formatDate(`${notif.reminder.start}T12:00:00Z`) : formatDateTime(notif.reminder.start)}${notif.reminder.location ? ` · ${notif.reminder.location}` : ""}`
+            : notif.preview}
         </span>
         <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
-          {notif.label} · {formatStamp(notif.createdAt)}
+          {notif.reminder ? [notif.spaceName, notif.reminder.calendarName].filter(Boolean).join(" · ") : notif.label} · {formatStamp(notif.createdAt)}
         </span>
       </span>
 

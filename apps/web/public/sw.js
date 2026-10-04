@@ -112,8 +112,9 @@ async function onPush() {
   for (const item of [...items].reverse()) {
     await self.registration.showNotification(item.title, {
       body: item.body,
-      // One per conversation: ten messages from the same channel are one line to come back to.
-      tag: item.conversation_id,
+      // One per conversation: ten messages from the same channel are one line to come back to. A
+      // reminder is one per event.
+      tag: item.conversation_id || item.event_id,
       renotify: true,
       silent: Boolean(pending.silent),
       icon: "/icons/icon-192.png",
@@ -124,6 +125,7 @@ async function onPush() {
         spaceId: item.space_id,
         conversationId: item.conversation_id,
         messageId: item.message_id,
+        eventId: item.event_id,
       },
     });
   }

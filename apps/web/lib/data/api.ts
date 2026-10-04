@@ -1563,12 +1563,21 @@ function attachmentIcon(kind: string): string {
 type NotificationDto = {
   id: string;
   kind: string;
-  conversation_id: string;
-  space_id: string;
+  /** Absent for a calendar reminder. */
+  conversation_id?: string;
+  /** Absent for a reminder from a personal calendar. */
+  space_id?: string;
   /** The channel's name; absent for a direct message. */
   channel_name?: string;
   space_name: string;
-  message_id: string;
+  message_id?: string;
+  event_id?: string;
+  recurrence_id?: string;
+  event_title?: string;
+  event_start?: string;
+  event_all_day?: boolean;
+  event_location?: string;
+  calendar_name?: string;
   actor_id?: string;
   actor_name?: string;
   preview: string;
@@ -1590,9 +1599,21 @@ type NotificationPageDto = {
  * back to the conversation's identifier, so a notification from anywhere but the space on screen
  * read as a UUID.
  */
+/** What a calendar reminder is about: an occurrence of an event. */
+export type ReminderInfo = {
+  eventId: string;
+  recurrenceId?: string;
+  title: string;
+  /** RFC 3339 in UTC, or `YYYY-MM-DD` for an all-day event. */
+  start: string;
+  allDay: boolean;
+  location?: string;
+  calendarName?: string;
+};
+
 export type ApiNotification = {
   id: string;
-  kind: "mention" | "broadcast" | "reply" | "dm" | "message";
+  kind: "mention" | "broadcast" | "reply" | "dm" | "message" | "calendar_reminder";
   conversationId: string;
   /** The space it happened in, so the inbox can be shown for the space on screen. */
   spaceId: string;
@@ -1606,6 +1627,9 @@ export type ApiNotification = {
   /** When the triggering message was sent, RFC 3339. */
   createdAt: string;
   read: boolean;
+  /** Set for a calendar reminder, whose conversation, message and (for a personal calendar) space
+   *  are empty strings. */
+  reminder?: ReminderInfo;
 };
 
 /** A page of the notification inbox, newest first, with the caller's total unread count. */
@@ -1619,17 +1643,31 @@ function toApiNotification(dto: NotificationDto): ApiNotification {
     dto.kind === "broadcast" ||
     dto.kind === "reply" ||
     dto.kind === "dm" ||
-    dto.kind === "message"
+    dto.kind === "message" ||
+    dto.kind === "calendar_reminder"
       ? dto.kind
       : "mention";
   return {
     id: dto.id,
     kind,
-    conversationId: dto.conversation_id,
-    spaceId: dto.space_id,
+    conversationId: dto.conversation_id ?? "",
+    spaceId: dto.space_id ?? "",
     channelName: dto.channel_name,
     spaceName: dto.space_name,
-    messageId: dto.message_id,
+    messageId: dto.message_id ?? "",
+    ...(dto.kind === "calendar_reminder" && dto.event_id
+      ? {
+          reminder: {
+            eventId: dto.event_id,
+            recurrenceId: dto.recurrence_id,
+            title: dto.event_title ?? "",
+            start: dto.event_start ?? dto.created_at,
+            allDay: dto.event_all_day === true,
+            location: dto.event_location,
+            calendarName: dto.calendar_name,
+          },
+        }
+      : {}),
     actor: dto.actor_name ?? "",
     preview: dto.preview,
     createdAt: dto.created_at,
@@ -1711,6 +1749,9 @@ export type NotificationPreferences = {
   emailReplies: boolean;
   emailDirectMessages: boolean;
   emailMessages: boolean;
+  /** Calendar reminders, in the app and by push, and by mail. */
+  calendarReminders: boolean;
+  emailCalendarReminders: boolean;
 };
 
 /** Each field and its name on the wire, so the two directions of the mapping cannot drift. */
@@ -1732,6 +1773,8 @@ const NOTIFICATION_FIELDS: [keyof NotificationPreferences, string][] = [
   ["emailReplies", "email_replies"],
   ["emailDirectMessages", "email_direct_messages"],
   ["emailMessages", "email_messages"],
+  ["calendarReminders", "calendar_reminders"],
+  ["emailCalendarReminders", "email_calendar_reminders"],
 ];
 
 /** `GET /me/notification-preferences`. */

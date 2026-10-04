@@ -80,6 +80,7 @@ import { fileUrl, readSpaceLocation, writeSpaceLocation } from "@/lib/spaceUrl";
 import { OfficeEditor } from "@/features/office/OfficeEditor";
 import { CalendarScreen } from "@/features/calendar/CalendarScreen";
 import { emitCalendarChanged } from "@/lib/calendarEvents";
+import { formatDate, formatTime } from "@/lib/i18n/format";
 import { emitFileEvent } from "@/lib/fileEvents";
 import type {
   Channel,
@@ -353,6 +354,7 @@ function toAppNotification(
     preview: oneLine(n.preview),
     createdAt: n.createdAt,
     read,
+    reminder: n.reminder,
   };
 }
 
@@ -1452,6 +1454,7 @@ function AppShell() {
           preview: n.preview,
           createdAt: n.createdAt,
           read: n.read || viewing,
+          reminder: n.reminder,
         };
         setNotifs((prev) => [notif, ...prev.filter((x) => x.id !== n.id)]);
         if (viewing) {
@@ -1829,7 +1832,8 @@ function AppShell() {
     () =>
       notifs.filter(
         (n) =>
-          n.spaceId === ws &&
+          // A reminder from a personal calendar belongs to no space: every space shows it.
+          (n.spaceId === ws || (n.kind === "calendar_reminder" && !n.spaceId)) &&
           passesPref(n, channelPrefs[n.channelId], settings.notif, wsNotifyLevel),
       ),
     [notifs, ws, channelPrefs, settings.notif, wsNotifyLevel],
@@ -2564,6 +2568,16 @@ function AppShell() {
   /** Open a notification: mark it read, then jump to its source message. */
   const openNotification = (targetChannel: string, messageId: string, id: string) => {
     setNotifRead(id, true);
+    // A calendar reminder has no conversation: it opens the calendar.
+    if (!targetChannel) {
+      if (compact) {
+        setMobileContent(false);
+        setMobileTab("calendar");
+      } else {
+        setView("calendar");
+      }
+      return;
+    }
     openMessage(targetChannel, messageId);
   };
 
@@ -2594,6 +2608,16 @@ function AppShell() {
       // does so whether or not this tab is open). Drawing it here too would show it twice.
       if (appIsAway() && pushActive()) return;
       if (settings.notif.sound) playNotificationSound();
+      if (n.reminder) {
+        const title = notifSummary(n, t);
+        const body = `${n.reminder.allDay ? formatDate(`${n.reminder.start}T12:00:00Z`) : formatTime(n.reminder.start)}${n.reminder.location ? ` · ${n.reminder.location}` : ""}`;
+        if (appIsAway()) {
+          showDesktopNotification({ title, body, tag: n.reminder.eventId, onClick: () => openNotification("", "", n.id) });
+          return;
+        }
+        notifyRef.current?.({ tone: "info", title, description: body });
+        return;
+      }
       const where = n.spaceId === liveRef.current.ws ? n.label : `${n.label} · ${n.spaceName}`;
       const who = n.isDm && !n.label ? n.actor : `${n.actor} dans ${where}`;
       if (appIsAway()) {
@@ -4044,6 +4068,7 @@ function AppShell() {
           spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
           spaceId={ws}
           onBack={compact ? backToTabs : undefined}
+          onNotify={showToast}
         />
       ) : null}
       {contentView === "settings" ? (
@@ -4491,6 +4516,7 @@ function AppShell() {
             timeZone={viewerTimeZone}
             spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
             rememberFilter
+            onNotify={showToast}
           />
         ) : null}
         {mobileTab === "activity" ? (

@@ -272,7 +272,8 @@ pub fn allows_reminder(prefs: &NotificationPrefs, delivery: Delivery) -> bool {
     prefs.enabled
         && match delivery {
             Delivery::App => prefs.calendar_reminders,
-            Delivery::Email => prefs.email_calendar_reminders,
+            // The mail column's master switch holds them as it holds every other kind.
+            Delivery::Email => prefs.email && prefs.email_calendar_reminders,
         }
 }
 
@@ -841,6 +842,11 @@ mod tests {
         prefs.email_calendar_reminders = false;
         assert!(allows_reminder(&prefs, Delivery::App));
         assert!(!allows_reminder(&prefs, Delivery::Email));
+        // The mail column's master switch holds reminders too, as the preferences screen shows it.
+        prefs.email_calendar_reminders = true;
+        prefs.email = false;
+        assert!(!allows_reminder(&prefs, Delivery::Email));
+        prefs.email = true;
         prefs.calendar_reminders = false;
         assert!(!allows("calendar_reminder", &prefs, None, Delivery::App));
         prefs.calendar_reminders = true;

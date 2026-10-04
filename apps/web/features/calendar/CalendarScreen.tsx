@@ -39,6 +39,7 @@ export type CalendarScreenProps = {
   /** The phone's tab remembers the last filter rather than following a space. */
   rememberFilter?: boolean;
   onBack?: () => void;
+  onNotify?: (toast: { tone: "info" | "success" | "danger"; title: string }) => void;
 };
 
 /**
@@ -47,7 +48,7 @@ export type CalendarScreenProps = {
  * the filter stays on screen, struck through, so being free or not can be read without switching
  * spaces; the viewer's own calendars are always drawn in full.
  */
-export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFilter, onBack }: CalendarScreenProps) {
+export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFilter, onBack, onNotify }: CalendarScreenProps) {
   const { t } = useTranslation();
   const today = localDay(new Date().toISOString(), timeZone);
   const [view, setView] = useState<View>(compact ? "list" : "week");
@@ -211,6 +212,7 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
         ) : null}
         <IconButton icon="chevron-left" label={t("calendar.previous")} onClick={() => step(-1)} />
         <IconButton icon="chevron-right" label={t("calendar.next")} onClick={() => step(1)} />
+        {compact ? <IconButton icon="rss" label={t("calendar.subscribeAll")} onClick={() => setSettings({ kind: "feeds" })} /> : null}
         <h2
           style={{ margin: 0, fontSize: compact ? "var(--text-lg)" : "var(--text-md)", fontWeight: 700, color: "var(--text-strong)", flex: compact ? 1 : undefined, cursor: compact ? "pointer" : undefined }}
           onClick={compact ? () => setAnchor(today) : undefined}
@@ -250,6 +252,11 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
             onToggle={toggle}
             onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
             onNewCalendar={(space) => setSettings({ kind: "new", spaceId: space })}
+            footer={
+              <Button size="sm" variant="ghost" iconLeft="rss" onClick={() => setSettings({ kind: "feeds" })} style={{ whiteSpace: "normal", height: "auto", textAlign: "left" }}>
+                {t("calendar.subscribeAll")}
+              </Button>
+            }
           />
         ) : null}
         <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }} {...swipeHandlers}>
@@ -298,6 +305,7 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
             setSettings(null);
           }}
           onChanged={reload}
+          onNotify={onNotify}
         />
       ) : null}
     </div>
