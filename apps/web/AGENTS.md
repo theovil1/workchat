@@ -347,6 +347,11 @@ zone, else the browser's.
   `EventForm` with `RecurrenceEditor` and `SeriesScopeDialog`, `CalendarSettingsDialog` with the
   subscription `FeedsSection`). Data: `lib/data/calendar.ts`; live changes arrive as
   `calendar.changed` through `lib/calendarEvents.ts` and reload what is on screen.
+- Invitations: `AttendeesField` (guests as chips, searched as one types or typed as an address),
+  `AvailabilityStrip` (a line per person on the event's day, from free/busy), "Find a time" built on
+  `freeSlots` in `model.ts`, the answer in `EventDetails` and in the inbox, and the public page
+  `app/i` (`PublicInvitationScreen`). An occurrence's `myStatus` draws its look (`chipStyle`).
+- Preferences live in `prefs.ts` (pure, tested by `prefs.test.ts`) and in the device's settings.
 
 ## Files screen (`features/files/`)
 
