@@ -1805,3 +1805,5 @@ async fn a_reminder_names_the_moved_occurrence() {
     assert_eq!(reminder["event_location"], "Salle Est");
     assert_eq!(reminder["recurrence_id"], rfc(now).replace("+00:00", "Z"));
 }
+
+mod invitation_tests;

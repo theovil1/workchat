@@ -51,6 +51,15 @@ pub struct CalendarAccess {
 }
 
 impl CalendarAccess {
+    /// What an invitation alone grants: reading the event and answering, never changing it.
+    pub fn read_only(calendar: calendars::Model) -> Self {
+        Self {
+            calendar,
+            can_write_events: false,
+            can_manage: false,
+        }
+    }
+
     fn new(calendar: calendars::Model, space_role: Option<String>) -> Self {
         let (can_write_events, can_manage) = match space_role.as_deref() {
             None => (true, true),
