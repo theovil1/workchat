@@ -1,14 +1,34 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Icon, IconButton, Tabs } from "@/components/ds";
-import { setCalendarMe, type Calendar, type Occurrence } from "@/lib/data/calendar";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Button, Dialog, Icon, IconButton, Tabs } from "@/components/ds";
+import {
+  setCalendarMe,
+  type Calendar,
+  type Occurrence,
+} from "@/lib/data/calendar";
 import { useTranslation } from "@/lib/i18n";
 import { CalendarOverlays, type SettingsTarget } from "./CalendarOverlays";
 import { CalendarSidebar, FilterChips } from "./CalendarSidebar";
 import { periodTitle } from "./format";
 import { ListView } from "./ListView";
-import { addDays, inFilter, localDay, rangeFor, weekdayOf, type Filter, type View } from "./model";
+import {
+  addDays,
+  inFilter,
+  localDay,
+  rangeFor,
+  weekdayOf,
+  type Filter,
+  type View,
+} from "./model";
+import { MiniMonth } from "./MiniMonth";
 import { MonthView } from "./MonthView";
 import type { ChipLook } from "./OccurrenceChip";
 import { daysOf, TimeGrid } from "./TimeGrid";
@@ -39,9 +59,16 @@ export type CalendarScreenProps = {
   /** The phone's tab remembers the last filter rather than following a space. */
   rememberFilter?: boolean;
   onBack?: () => void;
+  /** Desktop and tablet: back to the space's conversations, whose column the calendar's replaces. */
+  onLeave?: () => void;
+  /** The space it was opened from, named on the way back. */
+  spaceName?: string;
   /** An event to open (a clicked reminder): the screen starts on its day, with its details. */
   focus?: { eventId: string; start: string; allDay: boolean };
-  onNotify?: (toast: { tone: "info" | "success" | "danger"; title: string }) => void;
+  onNotify?: (toast: {
+    tone: "info" | "success" | "danger";
+    title: string;
+  }) => void;
 };
 
 /**
@@ -50,11 +77,26 @@ export type CalendarScreenProps = {
  * the filter stays on screen, struck through, so being free or not can be read without switching
  * spaces; the viewer's own calendars are always drawn in full.
  */
-export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFilter, onBack, focus, onNotify }: CalendarScreenProps) {
+export function CalendarScreen({
+  compact,
+  timeZone,
+  spaces,
+  spaceId,
+  rememberFilter,
+  onBack,
+  onLeave,
+  spaceName: leaveLabel,
+  focus,
+  onNotify,
+}: CalendarScreenProps) {
   const { t } = useTranslation();
   const today = localDay(new Date().toISOString(), timeZone);
   const [view, setView] = useState<View>(compact ? "list" : "week");
-  const focusDay = focus ? (focus.allDay ? focus.start : localDay(focus.start, timeZone)) : null;
+  const focusDay = focus
+    ? focus.allDay
+      ? focus.start
+      : localDay(focus.start, timeZone)
+    : null;
   const [anchor, setAnchor] = useState(focusDay ?? today);
   const [filter, setFilterState] = useState<Filter>(() => {
     const kept = rememberFilter ? storedFilter() : null;
@@ -64,15 +106,25 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
   const [opened, setOpened] = useState<Occurrence | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [settings, setSettings] = useState<SettingsTarget | null>(null);
+  // The phone's panel listing the calendars.
+  const [listOpen, setListOpen] = useState(false);
 
-  const range = useMemo(() => rangeFor(view, anchor, timeZone), [view, anchor, timeZone]);
-  const { calendars, occurrences, failed, reload, setCalendars } = useCalendarData(range);
+  const range = useMemo(
+    () => rangeFor(view, anchor, timeZone),
+    [view, anchor, timeZone],
+  );
+  const { calendars, occurrences, failed, reload, setCalendars } =
+    useCalendarData(range);
 
   // Once the focused event's day is loaded, open it, once.
   const focused = useRef(false);
   useEffect(() => {
     if (!focus || focused.current || !occurrences) return;
-    const found = occurrences.find((o) => o.eventId === focus.eventId && (o.start === focus.start || o.start.slice(0, 10) === focusDay));
+    const found = occurrences.find(
+      (o) =>
+        o.eventId === focus.eventId &&
+        (o.start === focus.start || o.start.slice(0, 10) === focusDay),
+    );
     if (found) {
       focused.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -91,13 +143,25 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     }
   };
 
-  const byId = useMemo(() => new Map((calendars ?? []).map((c) => [c.id, c])), [calendars]);
-  const chipCalendars = useMemo(() => (calendars ?? []).map((c) => ({ id: c.id, spaceId: c.spaceId })), [calendars]);
+  const byId = useMemo(
+    () => new Map((calendars ?? []).map((c) => [c.id, c])),
+    [calendars],
+  );
+  const chipCalendars = useMemo(
+    () => (calendars ?? []).map((c) => ({ id: c.id, spaceId: c.spaceId })),
+    [calendars],
+  );
   const lookOf = useCallback(
-    (o: Occurrence): ChipLook => ({ color: byId.get(o.calendarId)?.color, dimmed: !inFilter(o, chipCalendars, filter) }),
+    (o: Occurrence): ChipLook => ({
+      color: byId.get(o.calendarId)?.color,
+      dimmed: !inFilter(o, chipCalendars, filter),
+    }),
     [byId, chipCalendars, filter],
   );
-  const spaceName = useCallback((id?: string) => spaces.find((s) => s.id === id)?.name, [spaces]);
+  const spaceName = useCallback(
+    (id?: string) => spaces.find((s) => s.id === id)?.name,
+    [spaces],
+  );
   const calendarName = useCallback(
     (o: Occurrence) => {
       const calendar = byId.get(o.calendarId);
@@ -108,7 +172,9 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     [byId, spaceName],
   );
   // Only the spaces the viewer has calendars in get a chip.
-  const chipSpaces = spaces.filter((s) => (calendars ?? []).some((c) => c.spaceId === s.id));
+  const chipSpaces = spaces.filter((s) =>
+    (calendars ?? []).some((c) => c.spaceId === s.id),
+  );
 
   const step = (direction: 1 | -1) => {
     if (view === "day") setAnchor((a) => addDays(a, direction));
@@ -117,13 +183,22 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     else {
       const [y, m] = anchor.split("-").map(Number);
       const next = new Date(Date.UTC(y, m - 1 + direction, 1));
-      setAnchor(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`);
+      setAnchor(
+        `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`,
+      );
     }
   };
 
   const toggle = (calendar: Calendar) => {
-    setCalendars((list) => list?.map((c) => (c.id === calendar.id ? { ...c, hidden: !c.hidden } : c)) ?? null);
-    setCalendarMe(calendar.id, { hidden: !calendar.hidden }).catch(() => reload());
+    setCalendars(
+      (list) =>
+        list?.map((c) =>
+          c.id === calendar.id ? { ...c, hidden: !c.hidden } : c,
+        ) ?? null,
+    );
+    setCalendarMe(calendar.id, { hidden: !calendar.hidden }).catch(() =>
+      reload(),
+    );
   };
 
   // Swiping across the day view changes day, as a phone's calendar does.
@@ -138,7 +213,12 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
             const start = swipe.current;
             swipe.current = null;
             const end = e.changedTouches[0]?.clientX;
-            if (start === null || end === undefined || Math.abs(end - start) < 60) return;
+            if (
+              start === null ||
+              end === undefined ||
+              Math.abs(end - start) < 60
+            )
+              return;
             step(end < start ? 1 : -1);
           },
         }
@@ -150,7 +230,11 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     setDraft({ day, minutes });
   };
 
-  const viewTabs = (compact ? (["list", "day", "month"] as const) : (["month", "week", "day", "list"] as const)).map((v) => ({
+  const viewTabs = (
+    compact
+      ? (["list", "day", "month"] as const)
+      : (["month", "week", "day", "list"] as const)
+  ).map((v) => ({
     value: v,
     label: t(`calendar.view.${v}`),
   }));
@@ -169,7 +253,15 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
   const body = (() => {
     if (!calendars || !occurrences) {
       return (
-        <p role="status" style={{ padding: "var(--space-8)", color: "var(--text-muted)", textAlign: "center", margin: 0 }}>
+        <p
+          role="status"
+          style={{
+            padding: "var(--space-8)",
+            color: "var(--text-muted)",
+            textAlign: "center",
+            margin: 0,
+          }}
+        >
           {failed ? t("calendar.loadFailed") : t("calendar.loading")}
         </p>
       );
@@ -197,11 +289,22 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     if (view === "list") {
       return (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-          <ListView from={anchor} days={30} occurrences={occurrences} timeZone={timeZone} lookOf={lookOf} calendarName={calendarName} onOpen={setOpened} />
+          <ListView
+            from={anchor}
+            days={30}
+            occurrences={occurrences}
+            timeZone={timeZone}
+            lookOf={lookOf}
+            calendarName={calendarName}
+            onOpen={setOpened}
+          />
         </div>
       );
     }
-    const days = view === "week" ? daysOf(addDays(anchor, -weekdayOf(anchor)), 7) : [anchor];
+    const days =
+      view === "week"
+        ? daysOf(addDays(anchor, -weekdayOf(anchor)), 7)
+        : [anchor];
     return (
       <TimeGrid
         days={days}
@@ -215,114 +318,277 @@ export function CalendarScreen({ compact, timeZone, spaces, spaceId, rememberFil
     );
   })();
 
-  return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--surface)" }}>
-      <h1 style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", margin: -1 }}>{t("calendar.title")}</h1>
-      <div style={bar}>
-        {onBack ? <IconButton icon="arrow-left" size={compact ? "lg" : "md"} label={t("common.back")} onClick={onBack} /> : null}
-        {!compact ? (
-          <Button size="sm" onClick={() => setAnchor(today)}>
-            {t("conversation.today")}
-          </Button>
-        ) : null}
-        <IconButton icon="chevron-left" size={compact ? "lg" : "md"} label={t("calendar.previous")} onClick={() => step(-1)} />
-        <IconButton icon="chevron-right" size={compact ? "lg" : "md"} label={t("calendar.next")} onClick={() => step(1)} />
-        {compact ? <IconButton icon="rss" size="lg" label={t("calendar.subscribeAll")} onClick={() => setSettings({ kind: "feeds" })} /> : null}
-        <h2
-          style={{ margin: 0, fontSize: compact ? "var(--text-lg)" : "var(--text-md)", fontWeight: 700, color: "var(--text-strong)", flex: compact ? 1 : undefined, cursor: compact ? "pointer" : undefined }}
-          onClick={compact ? () => setAnchor(today) : undefined}
-        >
-          {periodTitle(view, anchor)}
-        </h2>
-        {!compact ? (
+  // The calendar's own column, in place of the space's (desktop and tablet).
+  const column =
+    !compact && calendars ? (
+      <CalendarSidebar
+        calendars={calendars}
+        spaces={spaces}
+        onToggle={toggle}
+        onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
+        onNewCalendar={(space) => setSettings({ kind: "new", spaceId: space })}
+        header={
           <>
-            <div style={{ flex: 1 }} />
-            <Tabs variant="pills" items={viewTabs} value={view} onChange={(v) => setView(v as View)} />
-            {writable.length > 0 ? (
-              <Button variant="primary" size="sm" iconLeft="plus" onClick={() => startDraft(anchor)}>
-                {t("calendar.newEvent")}
-              </Button>
+            {onLeave ? (
+              <div
+                style={{
+                  height: "var(--topbar-height)",
+                  flex: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 8px",
+                  borderBottom: "1.5px solid var(--border-subtle)",
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  iconLeft="arrow-left"
+                  onClick={onLeave}
+                  aria-label={t("calendar.backTo", { name: leaveLabel ?? "" })}
+                >
+                  {leaveLabel}
+                </Button>
+              </div>
             ) : null}
+            <div
+              style={{
+                flex: "none",
+                padding: "8px 10px 0",
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
+            >
+              <MiniMonth anchor={anchor} today={today} onPick={setAnchor} />
+            </div>
           </>
-        ) : null}
-      </div>
+        }
+        footer={
+          <Button
+            size="sm"
+            variant="ghost"
+            iconLeft="rss"
+            onClick={() => setSettings({ kind: "feeds" })}
+            style={{ whiteSpace: "normal", height: "auto", textAlign: "left" }}
+          >
+            {t("calendar.subscribeAll")}
+          </Button>
+        }
+      />
+    ) : null;
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        background: "var(--surface)",
+      }}
+    >
+      {column}
       <div
         style={{
-          flex: "none",
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          gap: 8,
-          padding: compact ? "0 12px 8px" : "8px 16px",
-          borderBottom: "1px solid var(--border-subtle)",
+          position: "relative",
         }}
       >
-        <FilterChips spaces={chipSpaces} filter={filter} onFilter={setFilter} />
-        {compact ? <Tabs variant="pills" items={viewTabs} value={view} onChange={(v) => setView(v as View)} /> : null}
-      </div>
-      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {!compact && calendars ? (
-          <CalendarSidebar
-            calendars={calendars}
-            spaces={spaces}
-            onToggle={toggle}
-            onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
-            onNewCalendar={(space) => setSettings({ kind: "new", spaceId: space })}
-            footer={
-              <Button size="sm" variant="ghost" iconLeft="rss" onClick={() => setSettings({ kind: "feeds" })} style={{ whiteSpace: "normal", height: "auto", textAlign: "left" }}>
-                {t("calendar.subscribeAll")}
-              </Button>
-            }
-          />
-        ) : null}
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }} {...swipeHandlers}>
-          {body}
-        </div>
-      </div>
-      {compact && writable.length > 0 ? (
-        <button
-          type="button"
-          aria-label={t("calendar.newEvent")}
-          onClick={() => startDraft(anchor)}
+        <h1
           style={{
             position: "absolute",
-            right: 16,
-            bottom: 16,
-            width: 52,
-            height: 52,
-            borderRadius: 14,
-            border: "none",
-            background: "var(--action-primary-bg)",
-            color: "var(--action-primary-fg)",
-            boxShadow: "3px 3px 0 var(--bee)",
-            display: "grid",
-            placeItems: "center",
-            cursor: "pointer",
-            zIndex: 2,
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            margin: -1,
           }}
         >
-          <Icon name="plus" size={22} />
-        </button>
-      ) : null}
-      {calendars ? (
-        <CalendarOverlays
-          compact={compact}
-          timeZone={timeZone}
-          spaces={spaces}
-          calendars={calendars}
-          filter={filter}
-          opened={opened}
-          draft={draft}
-          settings={settings}
-          onEdit={(occurrence) => setOpened(occurrence)}
-          onClose={() => {
-            setOpened(null);
-            setDraft(null);
-            setSettings(null);
+          {t("calendar.title")}
+        </h1>
+        <div style={bar}>
+          {onBack ? (
+            <IconButton
+              icon="arrow-left"
+              size={compact ? "lg" : "md"}
+              label={t("common.back")}
+              onClick={onBack}
+            />
+          ) : null}
+          {!compact ? (
+            <Button size="sm" onClick={() => setAnchor(today)}>
+              {t("conversation.today")}
+            </Button>
+          ) : null}
+          <IconButton
+            icon="chevron-left"
+            size={compact ? "lg" : "md"}
+            label={t("calendar.previous")}
+            onClick={() => step(-1)}
+          />
+          <IconButton
+            icon="chevron-right"
+            size={compact ? "lg" : "md"}
+            label={t("calendar.next")}
+            onClick={() => step(1)}
+          />
+          {compact ? (
+            <IconButton
+              icon="list"
+              size="lg"
+              label={t("calendar.calendars")}
+              onClick={() => setListOpen(true)}
+            />
+          ) : null}
+          <h2
+            style={{
+              margin: 0,
+              fontSize: compact ? "var(--text-lg)" : "var(--text-md)",
+              fontWeight: 700,
+              color: "var(--text-strong)",
+              flex: compact ? 1 : undefined,
+              cursor: compact ? "pointer" : undefined,
+            }}
+            onClick={compact ? () => setAnchor(today) : undefined}
+          >
+            {periodTitle(view, anchor)}
+          </h2>
+          {!compact ? (
+            <>
+              <div style={{ flex: 1 }} />
+              <Tabs
+                variant="pills"
+                items={viewTabs}
+                value={view}
+                onChange={(v) => setView(v as View)}
+              />
+              {writable.length > 0 ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  iconLeft="plus"
+                  onClick={() => startDraft(anchor)}
+                >
+                  {t("calendar.newEvent")}
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        <div
+          style={{
+            flex: "none",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            padding: compact ? "0 12px 8px" : "8px 16px",
+            borderBottom: "1px solid var(--border-subtle)",
           }}
-          onChanged={reload}
-          onNotify={onNotify}
-        />
-      ) : null}
+        >
+          <FilterChips
+            spaces={chipSpaces}
+            filter={filter}
+            onFilter={setFilter}
+          />
+          {compact ? (
+            <Tabs
+              variant="pills"
+              items={viewTabs}
+              value={view}
+              onChange={(v) => setView(v as View)}
+            />
+          ) : null}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+            {...swipeHandlers}
+          >
+            {body}
+          </div>
+        </div>
+        {compact && writable.length > 0 ? (
+          <button
+            type="button"
+            aria-label={t("calendar.newEvent")}
+            onClick={() => startDraft(anchor)}
+            style={{
+              position: "absolute",
+              right: 16,
+              bottom: 16,
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              border: "none",
+              background: "var(--action-primary-bg)",
+              color: "var(--action-primary-fg)",
+              boxShadow: "3px 3px 0 var(--bee)",
+              display: "grid",
+              placeItems: "center",
+              cursor: "pointer",
+              zIndex: 2,
+            }}
+          >
+            <Icon name="plus" size={22} />
+          </button>
+        ) : null}
+        {compact && listOpen && calendars && !settings ? (
+          <Dialog
+            size="md"
+            title={t("calendar.calendars")}
+            onClose={() => setListOpen(false)}
+            closeLabel={t("common.close")}
+          >
+            <CalendarSidebar
+              variant="sheet"
+              calendars={calendars}
+              spaces={spaces}
+              onToggle={toggle}
+              onSettings={(c) => setSettings({ kind: "edit", calendar: c })}
+              onNewCalendar={(space) =>
+                setSettings({ kind: "new", spaceId: space })
+              }
+              footer={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  iconLeft="rss"
+                  onClick={() => setSettings({ kind: "feeds" })}
+                >
+                  {t("calendar.subscribeAll")}
+                </Button>
+              }
+            />
+          </Dialog>
+        ) : null}
+        {calendars ? (
+          <CalendarOverlays
+            compact={compact}
+            timeZone={timeZone}
+            spaces={spaces}
+            calendars={calendars}
+            filter={filter}
+            opened={opened}
+            draft={draft}
+            settings={settings}
+            onEdit={(occurrence) => setOpened(occurrence)}
+            onClose={() => {
+              setOpened(null);
+              setDraft(null);
+              setSettings(null);
+            }}
+            onChanged={reload}
+            onNotify={onNotify}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

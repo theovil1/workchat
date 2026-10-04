@@ -1529,6 +1529,10 @@
     "unitMonth_one": "month",
     "unitMonth_other": "months",
     "unitYear_one": "year",
-    "unitYear_other": "years"
+    "unitYear_other": "years",
+    "backTo": "Back to {{name}}",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "pickDate": "Go to a date"
   }
 }

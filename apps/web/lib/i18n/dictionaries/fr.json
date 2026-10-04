@@ -1544,6 +1544,10 @@
     "unitMonth_other": "mois",
     "unitYear_one": "an",
     "unitYear_many": "ans",
-    "unitYear_other": "ans"
+    "unitYear_other": "ans",
+    "backTo": "Retour à {{name}}",
+    "previousMonth": "Mois précédent",
+    "nextMonth": "Mois suivant",
+    "pickDate": "Aller à une date"
   }
 }

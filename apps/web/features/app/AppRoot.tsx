@@ -4079,7 +4079,9 @@ function AppShell() {
           timeZone={viewerTimeZone}
           spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
           spaceId={ws}
+          spaceName={wsName}
           onBack={compact ? backToTabs : undefined}
+          onLeave={compact ? undefined : () => setView("channel")}
           onNotify={showToast}
         />
       ) : null}
@@ -4594,7 +4596,8 @@ function AppShell() {
           style={{ ...switchingStyle, flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}
           aria-busy={switchingSpace || undefined}
         >
-          {renderSidebar("tablet")}
+          {/* The calendar brings its own column, in place of the space's. */}
+          {contentView === "calendar" ? null : renderSidebar("tablet")}
           {content}
         </div>
         {spaces}
@@ -4611,7 +4614,7 @@ function AppShell() {
         style={{ ...switchingStyle, flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}
         aria-busy={switchingSpace || undefined}
       >
-        {desktopSidebar}
+        {contentView === "calendar" ? null : desktopSidebar}
         {content}
       </div>
       {overlays}

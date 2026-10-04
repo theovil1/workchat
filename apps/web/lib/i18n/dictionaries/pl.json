@@ -1641,6 +1641,10 @@
     "unitYear_one": "rok",
     "unitYear_few": "lata",
     "unitYear_many": "lat",
-    "unitYear_other": "roku"
+    "unitYear_other": "roku",
+    "backTo": "Wróć do: {{name}}",
+    "previousMonth": "Poprzedni miesiąc",
+    "nextMonth": "Następny miesiąc",
+    "pickDate": "Przejdź do daty"
   }
 }

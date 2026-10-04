@@ -48,9 +48,11 @@ export function FilterChips({
 }
 
 /**
- * The calendars, grouped: the viewer's own, then each space's. Each one can be shown or hidden (the
+ * The calendar's column. On a desktop it takes the place of the space's column while the calendar is
+ * open, as calendars do: a way back to the space, a small month to jump to a date, then the
+ * calendars, grouped (the viewer's own, then each space's). Each one can be shown or hidden (the
  * choice follows the person from one device to another) and, for whoever may, opened for its
- * settings.
+ * settings. On a phone the same list (`variant="sheet"`, with neither) fills a panel.
  */
 export function CalendarSidebar({
   calendars,
@@ -59,6 +61,8 @@ export function CalendarSidebar({
   onSettings,
   onNewCalendar,
   footer,
+  header,
+  variant = "column",
 }: {
   calendars: Calendar[];
   spaces: { id: string; name: string }[];
@@ -66,6 +70,9 @@ export function CalendarSidebar({
   onSettings?: (calendar: Calendar) => void;
   onNewCalendar?: (spaceId?: string) => void;
   footer?: ReactNode;
+  /** What sits above the list: the way back and the small month. */
+  header?: ReactNode;
+  variant?: "column" | "sheet";
 }) {
   const { t } = useTranslation();
   const groups: { key: string; title: string; spaceId?: string; items: Calendar[] }[] = [
@@ -77,8 +84,22 @@ export function CalendarSidebar({
   return (
     <nav
       aria-label={t("calendar.calendars")}
-      style={{ width: 240, flex: "none", borderRight: "1px solid var(--border-subtle)", background: "var(--surface-chrome)", overflowY: "auto", padding: "var(--space-3) var(--space-2-5)" }}
+      style={
+        variant === "column"
+          ? {
+              width: "var(--sidebar-width)",
+              flex: "none",
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              borderRight: "1.5px solid var(--border-subtle)",
+              background: "var(--surface-chrome)",
+            }
+          : undefined
+      }
     >
+      {header}
+      <div style={variant === "column" ? { flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-3) var(--space-2-5)" } : undefined}>
       {groups.map((group) => (
         <section key={group.key} style={{ marginBottom: "var(--space-3)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4, margin: "0 0 4px 6px" }}>
@@ -124,6 +145,7 @@ export function CalendarSidebar({
         </section>
       ))}
       {footer}
+      </div>
     </nav>
   );
 }

@@ -1585,6 +1585,10 @@
     "unitMonth_other": "meses",
     "unitYear_one": "año",
     "unitYear_many": "años",
-    "unitYear_other": "años"
+    "unitYear_other": "años",
+    "backTo": "Volver a {{name}}",
+    "previousMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente",
+    "pickDate": "Ir a una fecha"
   }
 }
