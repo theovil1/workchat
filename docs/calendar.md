@@ -70,6 +70,11 @@ audience, and open screens reload.
   (without refusing) when the event overlaps another one, in any calendar the viewer sees.
 - **The theme's accent** marks what is chosen: the view, the filter, today, and what the small month
   shows (a faint band for the week on screen, a faint pill for a single day).
+- **Preferences > Calendar** (kept on the device, like the other preferences, in
+  `features/calendar/prefs.ts`): the view it opens on (computer and phone apart), the first day of the
+  week, the clock (as the language writes it, 24 or 12 hours), the weekend in the week view, week
+  numbers, the hour the grid opens at, the working hours (off by default; once on, the others are
+  greyed), and how long a new event lasts.
 
 ## Subscribing from a phone
 

@@ -86,17 +86,23 @@ export function localMinutes(at: string, tz: string): number {
   return w.hour * 60 + w.minute;
 }
 
-/** The period a view shows around `anchor`: a day, a Monday-to-Sunday week, a six-week month grid,
+/** How many days `day` is past the first day of its week, the week starting on `weekStart` (as
+ *  `getUTCDay` counts: Sunday 0, Monday 1). */
+export function weekOffset(day: string, weekStart = 1): number {
+  return (weekdayOf(day) + 1 - weekStart + 7) % 7;
+}
+
+/** The period a view shows around `anchor`: a day, a week (from `weekStart`), a six-week month grid,
  *  or thirty days of list. */
-export function rangeFor(view: View, anchor: string, tz: string): { from: string; to: string } {
+export function rangeFor(view: View, anchor: string, tz: string, weekStart = 1): { from: string; to: string } {
   let first = anchor;
   let days = 1;
   if (view === "week") {
-    first = addDays(anchor, -weekdayOf(anchor));
+    first = addDays(anchor, -weekOffset(anchor, weekStart));
     days = 7;
   } else if (view === "month") {
     const monthStart = `${anchor.slice(0, 8)}01`;
-    first = addDays(monthStart, -weekdayOf(monthStart));
+    first = addDays(monthStart, -weekOffset(monthStart, weekStart));
     days = 42;
   } else if (view === "list") {
     days = 30;

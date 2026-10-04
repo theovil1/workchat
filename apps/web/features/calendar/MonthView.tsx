@@ -7,17 +7,21 @@ import { longDay, weekdayInitials } from "./format";
 import { ListView } from "./ListView";
 import { addDays, localDay, occursOn } from "./model";
 import { colorVar, OccurrenceChip, type ChipLook } from "./OccurrenceChip";
+import { rowWeek } from "./prefs";
 
 /** How many events a desktop month cell lists before "+ n more". */
 const SHOWN_PER_DAY = 3;
 
 /**
- * The month view: six weeks from the Monday on or before the 1st. On a desktop each day lists its
+ * The month view: six weeks from the first day of the week on or before the 1st, each line with its
+ * week number when the viewer asked for them. On a desktop each day lists its
  * first events; on a phone it shows one dot per event (grey outside the filter), and the day touched
  * lists its events underneath.
  */
 export function MonthView({
   from,
+  weekStart,
+  weekNumbers,
   anchor,
   occurrences,
   timeZone,
@@ -28,6 +32,8 @@ export function MonthView({
   compact,
 }: {
   from: string;
+  weekStart: number;
+  weekNumbers: boolean;
   anchor: string;
   occurrences: Occurrence[];
   timeZone: string;
@@ -47,7 +53,7 @@ export function MonthView({
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflowY: compact ? "auto" : undefined }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flex: "none" }} aria-hidden>
-        {weekdayInitials().map((initial, i) => (
+        {weekdayInitials(weekStart).map((initial, i) => (
           <div key={i} style={{ textAlign: "center", fontSize: "var(--text-2xs)", color: "var(--text-muted)", padding: "6px 0 2px" }}>
             {initial}
           </div>
@@ -64,7 +70,7 @@ export function MonthView({
           borderTop: compact ? undefined : "1px solid var(--border-subtle)",
         }}
       >
-        {days.map((day) => {
+        {days.map((day, i) => {
           const items = on(day);
           const outside = day.slice(0, 7) !== month;
           const isToday = day === today;
@@ -106,6 +112,11 @@ export function MonthView({
               >
                 {Number(day.slice(8))}
               </span>
+              {weekNumbers && i % 7 === 0 && !compact ? (
+                <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: "var(--radius-sm)", background: "var(--surface-sunken)", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
+                  {t("calendar.weekNumber", { n: rowWeek(day) })}
+                </span>
+              ) : null}
               {compact ? (
                 <div aria-hidden style={{ display: "flex", gap: 2, justifyContent: "center", marginTop: 2 }}>
                   {items.slice(0, 4).map((o) => {

@@ -3,19 +3,17 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import type { Occurrence } from "@/lib/data/calendar";
 import { useTranslation } from "@/lib/i18n";
-import { clock, longDay, shortDay } from "./format";
+import { clock, hourLabel, longDay, shortDay } from "./format";
 import { addDays, layoutDay, localDay, localMinutes, occursOn } from "./model";
 import { chipStyle, onActivate, OccurrenceChip, type ChipLook } from "./OccurrenceChip";
 
 /** Height of one hour on the grid, in pixels. */
 const HOUR = 48;
-/** Where the grid opens, scrolled: the start of a working day. */
-const OPEN_AT_HOUR = 8;
 const GUTTER = 52;
 
 /**
  * The week and day views: a column per day, hours down the side, the all-day events in a band above,
- * a line at the current time. Events that overlap share their column's width. Clicking (or tapping)
+ * a line at the current time, the hours outside the working day greyed. Events that overlap share their column's width. Clicking (or tapping)
  * an empty slot asks for a new event at that half hour, and the slot asked for stays drawn (in the
  * accent) while the new event is being written. Today's column is tinted with the accent.
  */
@@ -27,6 +25,9 @@ export function TimeGrid({
   onOpen,
   onCreateAt,
   pending,
+  openAt = 8,
+  work,
+  duration = 60,
   compact,
 }: {
   days: string[];
@@ -37,6 +38,12 @@ export function TimeGrid({
   onCreateAt?: (day: string, minutes: number, at: { x: number; y: number }) => void;
   /** The slot a new event is being written for. */
   pending?: { day: string; minutes: number };
+  /** The hour the grid opens scrolled to. */
+  openAt?: number;
+  /** Working hours: the others are greyed. */
+  work?: { start: number; end: number };
+  /** A new event's length, in minutes: what the hint and the pending slot draw. */
+  duration?: number;
   compact: boolean;
 }) {
   const { t } = useTranslation();
@@ -51,8 +58,13 @@ export function TimeGrid({
     return () => clearInterval(tick);
   }, []);
   useEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = OPEN_AT_HOUR * HOUR - 8;
+    if (scroller.current) scroller.current.scrollTop = openAt * HOUR - 8;
+    // Only where the grid first opens: a later change of preference must not jump the scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const offHours = work
+    ? `linear-gradient(to bottom, var(--off-hours) 0 ${work.start * HOUR}px, transparent ${work.start * HOUR}px ${work.end * HOUR}px, var(--off-hours) ${work.end * HOUR}px)`
+    : null;
 
   const allDay = (day: string) => occurrences.filter((o) => o.allDay && occursOn(o, day, timeZone));
   const bandRows = Math.max(0, ...days.map((d) => allDay(d).length));
@@ -100,8 +112,8 @@ export function TimeGrid({
         <div style={{ display: "flex", height: 24 * HOUR, position: "relative" }}>
           <div style={{ width: GUTTER, flex: "none", position: "relative" }} aria-hidden>
             {Array.from({ length: 24 }, (_, hour) => (
-              <div key={hour} style={{ position: "absolute", top: hour * HOUR - 7, right: 8, fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
-                {hour === 0 ? "" : clock(`2000-01-01T${String(hour).padStart(2, "0")}:00:00Z`, "UTC")}
+              <div key={hour} style={{ position: "absolute", top: hour * HOUR - 7, right: 8, whiteSpace: "nowrap", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
+                {hour === 0 ? "" : hourLabel(hour)}
               </div>
             ))}
           </div>
@@ -116,7 +128,9 @@ export function TimeGrid({
                 key={day}
                 style={{
                   ...column,
-                  backgroundImage: `repeating-linear-gradient(to bottom, var(--border-subtle) 0 1px, transparent 1px ${HOUR}px)`,
+                  backgroundImage: [`repeating-linear-gradient(to bottom, var(--border-subtle) 0 1px, transparent 1px ${HOUR}px)`, offHours].filter(Boolean).join(", "),
+                  // @ts-expect-error CSS custom property
+                  "--off-hours": "color-mix(in srgb, var(--text-muted) 7%, transparent)",
                   backgroundColor: day === today && days.length > 1 ? "color-mix(in srgb, var(--acc) 14%, transparent)" : undefined,
                   cursor: onCreateAt ? "copy" : undefined,
                 }}
@@ -176,7 +190,7 @@ export function TimeGrid({
                     style={{
                       position: "absolute",
                       top: (hover.minutes / 60) * HOUR,
-                      height: HOUR - 2,
+                      height: (duration / 60) * HOUR - 2,
                       left: 2,
                       right: 2,
                       borderRadius: "var(--radius-sm)",
@@ -191,9 +205,14 @@ export function TimeGrid({
                       pointerEvents: "none",
                     }}
                   >
-                    <div>{t("calendar.newEvent")}</div>
-                    <div style={{ fontWeight: 400 }}>
-                      {wallClock(hover.minutes)} - {wallClock(hover.minutes + 60)}
+                    {/* Too short for two lines (a half hour), the slot says both on one. */}
+                    <div style={{ whiteSpace: duration < 45 ? "nowrap" : undefined, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {t("calendar.newEvent")}
+                      {duration < 45 ? " · " : null}
+                      {duration < 45 ? null : <br />}
+                      <span style={{ fontWeight: 400 }}>
+                        {wallClock(hover.minutes)} - {wallClock(hover.minutes + duration)}
+                      </span>
                     </div>
                   </div>
                 ) : null}
@@ -203,7 +222,7 @@ export function TimeGrid({
                     style={{
                       position: "absolute",
                       top: (pending.minutes / 60) * HOUR,
-                      height: HOUR - 2,
+                      height: (duration / 60) * HOUR - 2,
                       left: 2,
                       right: 2,
                       borderRadius: "var(--radius-sm)",

@@ -1567,6 +1567,37 @@
     "addNotes": "Ajouter des notes",
     "clash_one": "Chevauche « {{title}} » ({{where}}, {{when}})",
     "clash_many": "Chevauche {{count}} événements : {{titles}}",
-    "clash_other": "Chevauche {{count}} événements : {{titles}}"
+    "clash_other": "Chevauche {{count}} événements : {{titles}}",
+    "weekNumber": "S{{n}}",
+    "prefs": {
+      "sub": "Comment l'agenda s'affiche sur cet appareil.",
+      "viewDesktop": "Vue à l'ouverture sur ordinateur",
+      "viewPhone": "Vue à l'ouverture sur téléphone",
+      "weekAndTime": "Semaine et heure",
+      "weekStart": "Premier jour de la semaine",
+      "clock": "Format de l'heure",
+      "clockAuto": "Selon la langue",
+      "clock24": "24 heures",
+      "clock12": "12 heures",
+      "weekends": "Afficher le week-end",
+      "weekendsDesc": "Samedi et dimanche dans la vue semaine.",
+      "weekNumbers": "Numéros de semaine",
+      "weekNumbersDesc": "Dans le mini-mois, la vue mois et le titre de la semaine.",
+      "workday": "Journée de travail",
+      "openAt": "Heure d'ouverture de la grille",
+      "openAtDesc": "L'heure affichée en haut des vues semaine et jour à l'ouverture.",
+      "workHours": "Heures de travail",
+      "workHoursDesc": "Griser dans la grille les heures en dehors de la journée de travail.",
+      "newEvents": "Nouveaux événements",
+      "duration": "Durée d'un nouvel événement",
+      "durationMinutes_one": "{{count}} min",
+      "durationMinutes_many": "{{count}} min",
+      "durationMinutes_other": "{{count}} min",
+      "durationHours_one": "{{count}} h",
+      "durationHours_many": "{{count}} h",
+      "durationHours_other": "{{count}} h",
+      "durationHoursMinutes": "{{h}} h {{m}}",
+      "workRange": "De quelle heure à quelle heure"
+    }
   }
 }

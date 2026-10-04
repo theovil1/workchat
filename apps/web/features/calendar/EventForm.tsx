@@ -12,6 +12,7 @@ import {
   type EventInput,
   type Occurrence,
 } from "@/lib/data/calendar";
+import { useSettings } from "@/features/app/settings";
 import { useTranslation } from "@/lib/i18n";
 import { currentLocale } from "@/lib/i18n/current";
 import { clock } from "./format";
@@ -77,6 +78,7 @@ export type EventFormProps = {
  */
 export function EventForm({ compact, calendars, spaces, timeZone, draft, editing, onDone, onCancel }: EventFormProps) {
   const { t } = useTranslation();
+  const duration = useSettings().calendar.duration;
   const writable = calendars.filter((c) => c.canWriteEvents);
   const occurrence = editing?.occurrence;
   const event = editing?.event;
@@ -99,8 +101,8 @@ export function EventForm({ compact, calendars, spaces, timeZone, draft, editing
     const day = draft?.day ?? today;
     const start =
       draft?.minutes ?? (day === today ? Math.min(23 * 60, (Math.floor(localMinutes(now.toISOString(), timeZone) / 60) + 1) * 60) : 9 * 60);
-    return { startDay: day, startTime: hhmm(start), endDay: start + 60 >= 1440 ? addDays(day, 1) : day, endTime: hhmm(start + 60) };
-  }, [occurrence, draft, zone, timeZone]);
+    return { startDay: day, startTime: hhmm(start), endDay: start + duration >= 1440 ? addDays(day, 1) : day, endTime: hhmm(start + duration) };
+  }, [occurrence, draft, zone, timeZone, duration]);
 
   const [title, setTitle] = useState(occurrence?.title ?? "");
   const [calendarId, setCalendarId] = useState(

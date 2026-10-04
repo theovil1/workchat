@@ -1550,6 +1550,35 @@
     "addLocation": "Ort hinzufügen",
     "addNotes": "Notizen hinzufügen",
     "clash_one": "Überschneidet sich mit „{{title}}“ ({{where}}, {{when}})",
-    "clash_other": "Überschneidet sich mit {{count}} Terminen: {{titles}}"
+    "clash_other": "Überschneidet sich mit {{count}} Terminen: {{titles}}",
+    "weekNumber": "KW {{n}}",
+    "prefs": {
+      "sub": "Wie der Kalender auf diesem Gerät aussieht.",
+      "viewDesktop": "Ansicht beim Öffnen am Computer",
+      "viewPhone": "Ansicht beim Öffnen am Telefon",
+      "weekAndTime": "Woche und Uhrzeit",
+      "weekStart": "Erster Tag der Woche",
+      "clock": "Zeitformat",
+      "clockAuto": "Wie in der Sprache üblich",
+      "clock24": "24 Stunden",
+      "clock12": "12 Stunden",
+      "weekends": "Wochenende anzeigen",
+      "weekendsDesc": "Samstag und Sonntag in der Wochenansicht.",
+      "weekNumbers": "Kalenderwochen",
+      "weekNumbersDesc": "Im kleinen Monat, in der Monatsansicht und im Titel der Woche.",
+      "workday": "Arbeitstag",
+      "openAt": "Uhrzeit beim Öffnen des Rasters",
+      "openAtDesc": "Die Uhrzeit oben in der Wochen- und Tagesansicht beim Öffnen.",
+      "workHours": "Arbeitszeit",
+      "workHoursDesc": "Stunden außerhalb des Arbeitstags im Raster grau darstellen.",
+      "newEvents": "Neue Termine",
+      "duration": "Dauer eines neuen Termins",
+      "durationMinutes_one": "{{count}} Min.",
+      "durationMinutes_other": "{{count}} Min.",
+      "durationHours_one": "{{count}} Stunde",
+      "durationHours_other": "{{count}} Stunden",
+      "durationHoursMinutes": "{{h}} Std. {{m}} Min.",
+      "workRange": "Von wann bis wann"
+    }
   }
 }

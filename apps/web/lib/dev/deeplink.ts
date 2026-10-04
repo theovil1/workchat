@@ -32,7 +32,7 @@ const MODALS = [
 const TEXT_SIZES = ["s", "m", "l", "xl"] as const;
 const FONTS = ["plex", "system", "dyslexic"] as const;
 const POPOVERS = ["notifications"] as const;
-const PREF_TABS = ["appearance", "notifications", "shortcuts", "security", "emojis"] as const;
+const PREF_TABS = ["appearance", "calendar", "notifications", "shortcuts", "security", "emojis"] as const;
 
 export type DeepLink = {
   stage?: (typeof STAGES)[number];

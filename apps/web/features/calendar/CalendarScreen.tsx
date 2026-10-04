@@ -17,21 +17,23 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { CalendarOverlays, type SettingsTarget } from "./CalendarOverlays";
 import { CalendarSidebar, ScopeSwitch, SpacePicker } from "./CalendarSidebar";
-import { periodTitle } from "./format";
+import { useSettings } from "@/features/app/settings";
+import { periodTitle, setClockFormat } from "./format";
 import { ListView } from "./ListView";
 import {
   addDays,
   inFilter,
   localDay,
   rangeFor,
-  weekdayOf,
+  weekOffset,
   type Filter,
   type View,
 } from "./model";
 import { MiniMonth } from "./MiniMonth";
 import { MonthView } from "./MonthView";
 import type { ChipLook } from "./OccurrenceChip";
-import { daysOf, TimeGrid } from "./TimeGrid";
+import { rowWeek, weekDays } from "./prefs";
+import { TimeGrid } from "./TimeGrid";
 import { useCalendarData } from "./useCalendarData";
 
 /** Where the phone's tab keeps the last filter chosen. */
@@ -92,7 +94,11 @@ export function CalendarScreen({
 }: CalendarScreenProps) {
   const { t } = useTranslation();
   const today = localDay(new Date().toISOString(), timeZone);
-  const [view, setView] = useState<View>(compact ? "list" : "week");
+  const prefs = useSettings().calendar;
+  // The clock is read by every time on screen: set as the screen draws, so a change in the
+  // preferences shows the next time the calendar opens.
+  setClockFormat(prefs.clock);
+  const [view, setView] = useState<View>(compact ? prefs.viewPhone : prefs.viewDesktop);
   const focusDay = focus
     ? focus.allDay
       ? focus.start
@@ -111,8 +117,8 @@ export function CalendarScreen({
   const [listOpen, setListOpen] = useState(false);
 
   const range = useMemo(
-    () => rangeFor(view, anchor, timeZone),
-    [view, anchor, timeZone],
+    () => rangeFor(view, anchor, timeZone, prefs.weekStart),
+    [view, anchor, timeZone, prefs.weekStart],
   );
   const { calendars, occurrences, failed, reload, setCalendars } =
     useCalendarData(range);
@@ -287,7 +293,9 @@ export function CalendarScreen({
       return (
         <MonthView
           key={anchor.slice(0, 7)}
-          from={addDays(monthStart, -weekdayOf(monthStart))}
+          from={addDays(monthStart, -weekOffset(monthStart, prefs.weekStart))}
+          weekStart={prefs.weekStart}
+          weekNumbers={prefs.weekNumbers}
           anchor={anchor}
           occurrences={occurrences}
           timeZone={timeZone}
@@ -317,10 +325,7 @@ export function CalendarScreen({
         </div>
       );
     }
-    const days =
-      view === "week"
-        ? daysOf(addDays(anchor, -weekdayOf(anchor)), 7)
-        : [anchor];
+    const days = view === "week" ? weekDays(anchor, prefs.weekStart, prefs.weekends) : [anchor];
     return (
       <TimeGrid
         days={days}
@@ -330,6 +335,9 @@ export function CalendarScreen({
         onOpen={setOpened}
         onCreateAt={writable.length > 0 ? startDraft : undefined}
         pending={draft && draft.minutes !== undefined ? { day: draft.day, minutes: draft.minutes } : undefined}
+        openAt={prefs.openAt}
+        work={prefs.workHours ? { start: prefs.workStart, end: prefs.workEnd } : undefined}
+        duration={prefs.duration}
         compact={compact}
       />
     );
@@ -379,8 +387,10 @@ export function CalendarScreen({
               <MiniMonth
                 anchor={anchor}
                 today={today}
-                shown={view === "week" ? daysOf(addDays(anchor, -weekdayOf(anchor)), 7) : [anchor]}
+                shown={view === "week" ? weekDays(anchor, prefs.weekStart, prefs.weekends) : [anchor]}
                 band={view === "week"}
+                weekStart={prefs.weekStart}
+                weekNumbers={prefs.weekNumbers}
                 onPick={setAnchor}
               />
             </div>
@@ -479,6 +489,11 @@ export function CalendarScreen({
             onClick={compact ? () => setAnchor(today) : undefined}
           >
             {periodTitle(view, anchor)}
+            {prefs.weekNumbers && (view === "week" || view === "day") ? (
+              <span style={{ marginLeft: 8, fontWeight: 400, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                {t("calendar.weekNumber", { n: rowWeek(addDays(anchor, -weekOffset(anchor, prefs.weekStart))) })}
+              </span>
+            ) : null}
           </h2>
           {!compact ? (
             <>

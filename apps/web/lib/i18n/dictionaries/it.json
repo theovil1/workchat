@@ -1608,6 +1608,37 @@
     "addNotes": "Aggiungi note",
     "clash_one": "Si sovrappone a «{{title}}» ({{where}}, {{when}})",
     "clash_many": "Si sovrappone a {{count}} eventi: {{titles}}",
-    "clash_other": "Si sovrappone a {{count}} eventi: {{titles}}"
+    "clash_other": "Si sovrappone a {{count}} eventi: {{titles}}",
+    "weekNumber": "Sett. {{n}}",
+    "prefs": {
+      "sub": "Come si presenta il calendario su questo dispositivo.",
+      "viewDesktop": "Vista all'apertura sul computer",
+      "viewPhone": "Vista all'apertura sul telefono",
+      "weekAndTime": "Settimana e ora",
+      "weekStart": "Primo giorno della settimana",
+      "clock": "Formato dell'ora",
+      "clockAuto": "Secondo la lingua",
+      "clock24": "24 ore",
+      "clock12": "12 ore",
+      "weekends": "Mostra il fine settimana",
+      "weekendsDesc": "Sabato e domenica nella vista settimana.",
+      "weekNumbers": "Numeri delle settimane",
+      "weekNumbersDesc": "Nel mini calendario, nella vista mese e nel titolo della settimana.",
+      "workday": "Giornata lavorativa",
+      "openAt": "Ora di apertura della griglia",
+      "openAtDesc": "L'ora in alto nelle viste settimana e giorno all'apertura.",
+      "workHours": "Orario di lavoro",
+      "workHoursDesc": "Mostra in grigio le ore fuori dalla giornata lavorativa.",
+      "newEvents": "Nuovi eventi",
+      "duration": "Durata di un nuovo evento",
+      "durationMinutes_one": "{{count}} min",
+      "durationMinutes_many": "{{count}} min",
+      "durationMinutes_other": "{{count}} min",
+      "durationHours_one": "{{count}} ora",
+      "durationHours_many": "{{count}} ore",
+      "durationHours_other": "{{count}} ore",
+      "durationHoursMinutes": "{{h}} h {{m}} min",
+      "workRange": "Da che ora a che ora"
+    }
   }
 }

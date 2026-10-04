@@ -1608,6 +1608,37 @@
     "addNotes": "Añadir notas",
     "clash_one": "Coincide con «{{title}}» ({{where}}, {{when}})",
     "clash_many": "Coincide con {{count}} eventos: {{titles}}",
-    "clash_other": "Coincide con {{count}} eventos: {{titles}}"
+    "clash_other": "Coincide con {{count}} eventos: {{titles}}",
+    "weekNumber": "Sem. {{n}}",
+    "prefs": {
+      "sub": "Cómo se muestra el calendario en este dispositivo.",
+      "viewDesktop": "Vista al abrir en un ordenador",
+      "viewPhone": "Vista al abrir en un teléfono",
+      "weekAndTime": "Semana y hora",
+      "weekStart": "Primer día de la semana",
+      "clock": "Formato de hora",
+      "clockAuto": "Según el idioma",
+      "clock24": "24 horas",
+      "clock12": "12 horas",
+      "weekends": "Mostrar el fin de semana",
+      "weekendsDesc": "Sábado y domingo en la vista de semana.",
+      "weekNumbers": "Números de semana",
+      "weekNumbersDesc": "En el minicalendario, la vista de mes y el título de la semana.",
+      "workday": "Jornada laboral",
+      "openAt": "Hora de apertura de la cuadrícula",
+      "openAtDesc": "La hora que aparece arriba en las vistas de semana y día al abrirlas.",
+      "workHours": "Horario laboral",
+      "workHoursDesc": "Mostrar en gris las horas fuera de la jornada laboral.",
+      "newEvents": "Eventos nuevos",
+      "duration": "Duración de un evento nuevo",
+      "durationMinutes_one": "{{count}} min",
+      "durationMinutes_many": "{{count}} min",
+      "durationMinutes_other": "{{count}} min",
+      "durationHours_one": "{{count}} hora",
+      "durationHours_many": "{{count}} horas",
+      "durationHours_other": "{{count}} horas",
+      "durationHoursMinutes": "{{h}} h {{m}} min",
+      "workRange": "Desde qué hora hasta qué hora"
+    }
   }
 }

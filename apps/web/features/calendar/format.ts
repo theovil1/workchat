@@ -18,9 +18,25 @@ function utcNoon(day: string): Date {
   return new Date(Date.UTC(y, m - 1, d, 12));
 }
 
-/** "09:00", or "9:00 AM" where that is what a clock says. */
+let clockFormat: "auto" | "24" | "12" = "auto";
+
+/** The clock the viewer chose in their preferences: the calendar screen sets it as it draws. */
+export function setClockFormat(format: "auto" | "24" | "12"): void {
+  clockFormat = format;
+}
+
+/** "09:00", or "9:00 AM" where that is what a clock says (or what the viewer chose). */
 export function clock(at: string, timeZone: string): string {
-  return new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", timeZone }).format(new Date(at));
+  const cycle = clockFormat === "24" ? { hourCycle: "h23" as const } : clockFormat === "12" ? { hourCycle: "h12" as const } : {};
+  return new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", timeZone, ...cycle }).format(new Date(at));
+}
+
+/** An hour in the grid's margin: "09:00", or "9 AM" on a 12-hour clock, short enough for it. */
+export function hourLabel(hour: number): string {
+  const cycle = clockFormat === "24" ? { hourCycle: "h23" as const } : clockFormat === "12" ? { hourCycle: "h12" as const } : {};
+  const format = new Intl.DateTimeFormat(currentLocale(), { hour: "numeric", timeZone: "UTC", ...cycle });
+  const at = new Date(Date.UTC(2000, 0, 1, hour));
+  return format.resolvedOptions().hour12 ? format.format(at) : clock(at.toISOString(), "UTC");
 }
 
 /** A day as a heading: "lundi 19 octobre". */
@@ -37,11 +53,12 @@ export function shortDay(day: string): { weekday: string; date: string } {
   };
 }
 
-/** The initial of each weekday, Monday first, for the month grid's head. */
-export function weekdayInitials(): string[] {
-  // 2026-10-19 is a Monday.
+/** The initial of each weekday, from the first day of the week (Sunday 0, Monday 1, Saturday 6),
+ *  for the month grid's head. */
+export function weekdayInitials(weekStart = 1): string[] {
+  // 2026-10-18 is a Sunday.
   return Array.from({ length: 7 }, (_, i) =>
-    new Intl.DateTimeFormat(currentLocale(), { weekday: "narrow", timeZone: "UTC" }).format(utcNoon(`2026-10-${19 + i}`)),
+    new Intl.DateTimeFormat(currentLocale(), { weekday: "narrow", timeZone: "UTC" }).format(utcNoon(`2026-10-${18 + ((weekStart + i) % 7)}`)),
   );
 }
 

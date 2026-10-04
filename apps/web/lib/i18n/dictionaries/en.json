@@ -1550,6 +1550,35 @@
     "addLocation": "Add a place",
     "addNotes": "Add notes",
     "clash_one": "Overlaps “{{title}}” ({{where}}, {{when}})",
-    "clash_other": "Overlaps {{count}} events: {{titles}}"
+    "clash_other": "Overlaps {{count}} events: {{titles}}",
+    "weekNumber": "W{{n}}",
+    "prefs": {
+      "sub": "How the calendar shows on this device.",
+      "viewDesktop": "View when opened on a computer",
+      "viewPhone": "View when opened on a phone",
+      "weekAndTime": "Week and time",
+      "weekStart": "First day of the week",
+      "clock": "Time format",
+      "clockAuto": "As the language writes it",
+      "clock24": "24-hour",
+      "clock12": "12-hour",
+      "weekends": "Show the weekend",
+      "weekendsDesc": "Saturday and Sunday in the week view.",
+      "weekNumbers": "Week numbers",
+      "weekNumbersDesc": "In the small month, the month view and the week's title.",
+      "workday": "Working day",
+      "openAt": "Hour the grid opens at",
+      "openAtDesc": "The hour at the top of the week and day views when they open.",
+      "workHours": "Working hours",
+      "workHoursDesc": "Grey the hours outside the working day on the grid.",
+      "newEvents": "New events",
+      "duration": "Length of a new event",
+      "durationMinutes_one": "{{count}} min",
+      "durationMinutes_other": "{{count}} min",
+      "durationHours_one": "{{count}} hour",
+      "durationHours_other": "{{count}} hours",
+      "durationHoursMinutes": "{{h}} h {{m}} min",
+      "workRange": "From when to when"
+    }
   }
 }

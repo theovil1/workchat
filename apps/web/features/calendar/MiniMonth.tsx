@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { IconButton } from "@/components/ds";
 import { useTranslation } from "@/lib/i18n";
 import { longDay, periodTitle, weekdayInitials } from "./format";
-import { addDays, weekdayOf } from "./model";
+import { addDays, weekOffset } from "./model";
+import { rowWeek } from "./prefs";
 
 /** The month a day is in, as its first day. */
 function monthOf(day: string): string {
@@ -28,6 +29,8 @@ export function MiniMonth({
   today,
   shown: onScreen,
   band,
+  weekStart,
+  weekNumbers,
   onPick,
 }: {
   anchor: string;
@@ -35,13 +38,16 @@ export function MiniMonth({
   shown: string[];
   /** A continuous band (a week) rather than a pill on each day. */
   band: boolean;
+  weekStart: number;
+  weekNumbers: boolean;
   onPick: (day: string) => void;
 }) {
   const { t } = useTranslation();
   const [shown, setShown] = useState<{ month: string; from: string } | null>(null);
   // Follow the screen unless the arrows were used since it last moved.
   const month = shown && shown.from === anchor ? shown.month : monthOf(anchor);
-  const first = addDays(month, -weekdayOf(month));
+  const first = addDays(month, -weekOffset(month, weekStart));
+  const columns = weekNumbers ? "26px repeat(7, 1fr)" : "repeat(7, 1fr)";
   const days = Array.from({ length: 42 }, (_, i) => addDays(first, i));
 
   return (
@@ -51,8 +57,9 @@ export function MiniMonth({
         <IconButton icon="chevron-left" size="sm" label={t("calendar.previousMonth")} onClick={() => setShown({ month: shiftMonth(month, -1), from: anchor })} />
         <IconButton icon="chevron-right" size="sm" label={t("calendar.nextMonth")} onClick={() => setShown({ month: shiftMonth(month, 1), from: anchor })} />
       </div>
-      <div role="grid" aria-label={t("calendar.pickDate")} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 2 }}>
-        {weekdayInitials().map((initial, i) => (
+      <div role="grid" aria-label={t("calendar.pickDate")} style={{ display: "grid", gridTemplateColumns: columns, rowGap: 2 }}>
+        {weekNumbers ? <span aria-hidden /> : null}
+        {weekdayInitials(weekStart).map((initial, i) => (
           <span key={`h${i}`} aria-hidden style={{ textAlign: "center", fontSize: 10, color: "var(--text-muted)", paddingBottom: 2 }}>
             {initial}
           </span>
@@ -66,8 +73,15 @@ export function MiniMonth({
           const before = i % 7 !== 0 && onScreen.includes(days[i - 1]);
           const after = i % 7 !== 6 && onScreen.includes(days[i + 1]);
           return (
+            <Fragment key={day}>
+            {weekNumbers && i % 7 === 0 ? (
+              // Written "S41" like everywhere else, small and faint, so a week's number is never read
+              // as a day's.
+              <span aria-hidden style={{ fontSize: 8, color: "var(--text-disabled)", display: "grid", placeItems: "center start" }}>
+                {t("calendar.weekNumber", { n: rowWeek(day) })}
+              </span>
+            ) : null}
             <button
-              key={day}
               type="button"
               role="gridcell"
               aria-label={longDay(day)}
@@ -94,6 +108,7 @@ export function MiniMonth({
                 <span aria-hidden style={{ position: "absolute", left: "50%", bottom: 2, width: 4, height: 4, marginLeft: -2, borderRadius: "50%", background: "var(--alarm)" }} />
               ) : null}
             </button>
+            </Fragment>
           );
         })}
       </div>
