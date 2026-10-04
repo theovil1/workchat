@@ -90,6 +90,10 @@ pub struct NotificationPrefs {
     /// asked for, not something that happened in a conversation.
     pub calendar_reminders: bool,
     pub email_calendar_reminders: bool,
+    /// Calendar invitations and what follows them (a change, a cancellation, a refusal), in the app
+    /// and by push, then by mail.
+    pub calendar_invitations: bool,
+    pub email_calendar_invitations: bool,
 }
 
 /// Where a notification would go: the app and push, or the email digest. Each person chooses, per
@@ -122,6 +126,8 @@ impl Default for NotificationPrefs {
             email_messages: false,
             calendar_reminders: true,
             email_calendar_reminders: true,
+            calendar_invitations: true,
+            email_calendar_invitations: true,
         }
     }
 }
@@ -224,9 +230,15 @@ pub fn allows(
     if !prefs.enabled {
         return false;
     }
-    // A reminder belongs to no conversation: its own switches decide.
+    // A reminder or an invitation belongs to no conversation: its own switches decide.
     if kind == "calendar_reminder" {
         return allows_reminder(prefs, delivery);
+    }
+    if is_invitation_kind(kind) {
+        return match delivery {
+            Delivery::App => prefs.calendar_invitations,
+            Delivery::Email => prefs.email && prefs.email_calendar_invitations,
+        };
     }
     let fallback = Scope::default();
     let scope = scope.unwrap_or(&fallback);
@@ -264,6 +276,15 @@ pub fn allows(
         return matches!(kind, "mention" | "broadcast" | "dm");
     }
     true
+}
+
+/// Whether a notification kind is one of an invitation's: the invitation itself, a change, a
+/// cancellation, a refusal.
+pub fn is_invitation_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "calendar_invitation" | "calendar_update" | "calendar_cancel" | "calendar_declined"
+    )
 }
 
 /// Whether a calendar reminder reaches someone by `delivery`. Quiet hours decide when, not whether,
@@ -855,5 +876,33 @@ mod tests {
         // A document saved before the switches existed reads them as on.
         let old: NotificationPrefs = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
         assert!(old.calendar_reminders && old.email_calendar_reminders);
+    }
+
+    #[test]
+    fn calendar_invitations_have_their_own_switches() {
+        let mut prefs = NotificationPrefs::default();
+        for kind in [
+            "calendar_invitation",
+            "calendar_update",
+            "calendar_cancel",
+            "calendar_declined",
+        ] {
+            assert!(allows(kind, &prefs, None, Delivery::App));
+            assert!(allows(kind, &prefs, None, Delivery::Email));
+        }
+        prefs.email_calendar_invitations = false;
+        assert!(allows("calendar_invitation", &prefs, None, Delivery::App));
+        assert!(!allows(
+            "calendar_invitation",
+            &prefs,
+            None,
+            Delivery::Email
+        ));
+        prefs.calendar_invitations = false;
+        assert!(!allows("calendar_update", &prefs, None, Delivery::App));
+        // Reminders are not invitations.
+        assert!(allows("calendar_reminder", &prefs, None, Delivery::App));
+        let old: NotificationPrefs = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(old.calendar_invitations && old.email_calendar_invitations);
     }
 }

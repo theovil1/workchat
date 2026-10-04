@@ -106,6 +106,7 @@ pub async fn create_for_message(
             message_id: Set(Some(message_id)),
             event_id: Set(None),
             occurrence_start: Set(None),
+            payload: Set(None),
             actor_id: Set(Some(actor_id)),
             created_at: Set(now),
             read_at: Set(None),
