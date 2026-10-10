@@ -1,9 +1,11 @@
 "use client";
 
+import { Icon } from "@/components/ds";
 import type { Occurrence } from "@/lib/data/calendar";
 import { useTranslation } from "@/lib/i18n";
 import { clock, longDay } from "./format";
 import { addDays, localDay, occursOn } from "./model";
+import { STATUS_LOOK } from "./AttendeesField";
 import { chipStyle, onActivate, type ChipLook } from "./OccurrenceChip";
 
 /**
@@ -106,8 +108,39 @@ function ListRow({
       </div>
       <div aria-hidden style={{ width: 4, borderRadius: 3, flex: "none", background: look.dimmed ? "var(--border-strong)" : fill.background }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, color: look.dimmed ? "var(--text-muted)" : "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {o.title}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span
+            style={{
+              fontWeight: 600,
+              color: look.dimmed ? "var(--text-muted)" : "var(--text-strong)",
+              textDecoration: look.status === "declined" ? "line-through" : undefined,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {o.title}
+          </span>
+          {/* The viewer's answer, when it is not a plain yes: a list has no room for a look alone. */}
+          {look.status && look.status !== "accepted" ? (
+            <span
+              style={{
+                flex: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "1px 8px 1px 4px",
+                borderRadius: 999,
+                background: STATUS_LOOK[look.status].color,
+                color: "var(--on-pastel)",
+                fontSize: "var(--text-2xs)",
+                fontWeight: 600,
+              }}
+            >
+              <Icon name={STATUS_LOOK[look.status].icon} size={10} />
+              {t(`calendar.myAnswer.${look.status}`)}
+            </span>
+          ) : null}
         </div>
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {calendar}

@@ -43,7 +43,7 @@ audience, and open screens reload.
 ## Reminders
 
 - A reminder belongs to a person, not to an event. Who gets one: the owner of a personal calendar;
-  every member who sees a space calendar.
+  every member who sees a space calendar; for an event with attendees, see Invitations below.
 - Each calendar has a **default reminder** for its timed events (10 minutes for the first ones; none
   is a valid choice, for a leave calendar say). Each person may override it for a whole calendar or
   for one event. An all-day event reminds only who asked (the evening before at 17:00, or the same
@@ -56,6 +56,45 @@ audience, and open screens reload.
   whoever has no Ruchoir open, when the instance has a mail relay. Quiet hours and "do not disturb"
   hold back the push and the mail; the inbox keeps it. The preferences have a "Calendar reminders"
   row, for the app and for mail.
+
+## Invitations
+
+- **Who may be invited.** To an event of a space calendar: the space's members who see its calendars
+  (`member`, `admin`, `owner`; never a guest). To an event of a personal calendar: anyone sharing a
+  space with its owner. And anyone by email address; an address that is such a member becomes them.
+  Whoever may write in the calendar changes the list, which belongs to the series (and follows it
+  when "this and the following ones" splits it). The organiser is the event's author, off the list,
+  counted as going. 100 attendees at most.
+- **Answers**: yes, maybe, no, for the series or for one date of it (`calendar_attendee_overrides`);
+  answering for the series again clears the dates' own answers. Members answer in the event's details
+  or from the notification; people invited by address on a public page, `/i/?t=<token>`, for every
+  date. Their token is found by its digest and also kept encrypted with the server's key
+  (`RUCHOIR_SECRET_ENCRYPTION_KEY`), so every later mail repeats the same link.
+- **Seeing an invitation.** Someone invited to an event of a calendar they do not see (someone's
+  personal one) sees that event, read only, as long as they share a space with its owner. The
+  screen gathers those under an "Invitations received" calendar of theirs, which they may hide.
+- **Reminders.** An event with attendees reminds its organiser and the attendees who still may be
+  invited and did not decline (that date); without attendees nothing changes.
+- **Telling people** (`apps/api/src/calendar/invitations.rs`): an invitation, a change of time or
+  place (to those who did not decline), a cancellation or being taken off the list, and a refusal
+  (to the organiser only). Members get a notification (`calendar_invitation`, `calendar_update`,
+  `calendar_cancel`, `calendar_declined`), pushed, and a mail when no Ruchoir page is open and the
+  "Calendar invitations" preference allows it. People invited by address get a mail in the
+  organiser's language with the event attached (`METHOD:REQUEST`, or `CANCEL`). Nobody is told of
+  their own doing. A notification keeps the event as it was (`notifications.payload`), so a
+  cancellation outlives its event.
+- **Free/busy**: `POST /api/v1/calendar/freebusy` gives people's busy times (merged, never a title)
+  over 31 days at most, for people sharing a space with the caller. Busy means one's own calendars,
+  the events one is invited to and did not decline, and those one organises with attendees; a space
+  event that asks nothing of anyone keeps nobody busy. The form shows a line per person on the
+  event's day and proposes slots when everyone is free ("Find a time").
+- **The feed** names each event's organiser and attendees (a member by `urn:uuid:`, never their
+  address), and the address for all of someone's calendars carries their invitations.
+
+API: `attendees` in the event body (the whole list; absent leaves it), `organizer`, `attendees` and
+`my_status` on an event, `my_status`, `invited` and `has_attendees` on an occurrence,
+`PUT /api/v1/events/{id}/response`, `GET /api/v1/calendars/{id}/invitees?q=`,
+`POST /api/v1/calendar/freebusy`, `GET|POST /api/v1/public/invitation/{token}`.
 
 ## The screen
 
@@ -92,6 +131,5 @@ New Calendar > On the Network.
 
 ## Limits of this first lot
 
-Not yet: inviting people and their answers, linking an event to a channel and attaching files,
-free/busy, importing Nextcloud's `.ics`, sharing a personal calendar, several reminders per event,
+Not yet: linking an event to a channel and attaching files, importing Nextcloud's `.ics`, sharing a personal calendar, several reminders per event,
 a year view, printing, searching events, and two-way sync with other calendars (CalDAV).

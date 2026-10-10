@@ -8,6 +8,7 @@ use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
+use super::attendees::{self, Attendance};
 use super::authz::{self, CalendarAccess};
 use super::dto::{OccurrenceDto, OccurrencesQuery};
 use super::error::CalendarError;
@@ -30,7 +31,8 @@ fn parse_bound(text: &str) -> Result<OffsetDateTime, CalendarError> {
     params(
         ("from" = String, Query, description = "RFC 3339"),
         ("to" = String, Query, description = "RFC 3339, exclusive; at most 400 days after from"),
-        ("calendars" = Option<String>, Query, description = "Comma-separated calendar ids; all visible ones when absent")
+        ("calendars" = Option<String>, Query, description = "Comma-separated calendar ids; all visible ones when absent"),
+        ("invitations" = Option<bool>, Query, description = "Add the events seen through an invitation alone; yes when absent")
     ),
     responses(
         (status = 200, description = "The occurrences, in order", body = [OccurrenceDto]),
@@ -58,14 +60,23 @@ pub async fn list_occurrences(
                 .map_err(|_| CalendarError::Invalid("Calendar ids are UUIDs."))?,
         ),
     };
-    let accesses: HashMap<Uuid, CalendarAccess> = authz::visible(&state.db, session.user_id)
-        .await?
+    let visible = authz::visible(&state.db, session.user_id).await?;
+    let seen: HashSet<Uuid> = visible.iter().map(|a| a.calendar.id).collect();
+    let mut accesses: HashMap<Uuid, CalendarAccess> = visible
         .into_iter()
         .filter(|a| wanted.as_ref().is_none_or(|w| w.contains(&a.calendar.id)))
         .map(|a| (a.calendar.id, a))
         .collect();
     let calendar_ids: Vec<Uuid> = accesses.keys().copied().collect();
-    if calendar_ids.is_empty() {
+    // Invitations from calendars the viewer does not see: those events only, read only.
+    let mut invited_ids: HashSet<Uuid> = HashSet::new();
+    if query.invitations.unwrap_or(true) {
+        for (event, access) in attendees::invited_events(&state.db, session.user_id, &seen).await? {
+            invited_ids.insert(event.id);
+            accesses.entry(access.calendar.id).or_insert(access);
+        }
+    }
+    if calendar_ids.is_empty() && invited_ids.is_empty() {
         return Ok(Json(Vec::new()));
     }
 
@@ -73,7 +84,11 @@ pub async fn list_occurrences(
     // All-day bounds are a day wider, as in `recurrence::expand`.
     let day = Duration::days(1);
     let events = calendar_events::Entity::find()
-        .filter(calendar_events::Column::CalendarId.is_in(calendar_ids.clone()))
+        .filter(
+            Condition::any()
+                .add(calendar_events::Column::CalendarId.is_in(calendar_ids.clone()))
+                .add(calendar_events::Column::Id.is_in(invited_ids.clone())),
+        )
         .filter(
             Condition::any()
                 .add(calendar_events::Column::SeriesUntil.is_null())
@@ -95,8 +110,14 @@ pub async fn list_occurrences(
     {
         by_event.entry(row.event_id).or_default().push(row);
     }
-    let reminders =
-        ViewerReminders::load(&state.db, session.user_id, event_ids, calendar_ids).await?;
+    let attendance = Attendance::load(&state.db, session.user_id, &event_ids).await?;
+    let reminders = ViewerReminders::load(
+        &state.db,
+        session.user_id,
+        event_ids,
+        accesses.keys().copied().collect(),
+    )
+    .await?;
 
     let mut found = Vec::new();
     for event in &events {
@@ -111,6 +132,8 @@ pub async fn list_occurrences(
             .map(|r| (r.recurrence_id.as_str(), r))
             .collect();
         let my_reminder = reminders.effective(event, &access.calendar);
+        let invited = invited_ids.contains(&event.id);
+        let has_attendees = attendance.has_attendees(event.id);
         for occurrence in recurrence::expand(&series_of(event, &inputs), from, to)? {
             let key = occurrence.recurrence_id.map(|id| id.to_key());
             let exception = key.as_deref().and_then(|k| texts.get(k));
@@ -138,6 +161,9 @@ pub async fn list_occurrences(
                 overridden: exception.is_some(),
                 can_edit: access.can_write_events,
                 my_reminder_minutes: my_reminder,
+                my_status: attendance.status(event, session.user_id, key.as_deref()),
+                invited,
+                has_attendees,
             });
         }
     }

@@ -51,6 +51,15 @@ pub struct CalendarAccess {
 }
 
 impl CalendarAccess {
+    /// What an invitation alone grants: reading the event and answering, never changing it.
+    pub fn read_only(calendar: calendars::Model) -> Self {
+        Self {
+            calendar,
+            can_write_events: false,
+            can_manage: false,
+        }
+    }
+
     fn new(calendar: calendars::Model, space_role: Option<String>) -> Self {
         let (can_write_events, can_manage) = match space_role.as_deref() {
             None => (true, true),
@@ -99,6 +108,18 @@ pub async fn access<C: ConnectionTrait>(
         }
         _ => Err(CalendarError::NotFound),
     }
+}
+
+/// A calendar, whoever asks: for telling its audience something happened from outside (a guest
+/// answering through a link).
+pub async fn access_any<C: ConnectionTrait>(
+    db: &C,
+    calendar_id: Uuid,
+) -> Result<calendars::Model, CalendarError> {
+    calendars::Entity::find_by_id(calendar_id)
+        .one(db)
+        .await?
+        .ok_or(CalendarError::NotFound)
 }
 
 /// Every calendar `user_id` sees: their own, then their spaces'. Creates the defaults that are

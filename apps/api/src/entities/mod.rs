@@ -25,6 +25,8 @@ pub mod file_versions;
 pub mod files;
 
 // The calendar.
+pub mod calendar_attendee_overrides;
+pub mod calendar_event_attendees;
 pub mod calendar_event_exceptions;
 pub mod calendar_event_reminders;
 pub mod calendar_events;

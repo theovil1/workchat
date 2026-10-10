@@ -262,7 +262,13 @@
     "emailOff": "Podsumowanie e-mailem jest wyłączone: żadna wiadomość nie jest wysyłana.",
     "reminder": "Przypomnienie: {{title}}",
     "kindReminders": "Przypomnienia z kalendarza",
-    "kindRemindersDesc": "Przed wydarzeniem z Twoich kalendarzy, zgodnie z ustawieniem."
+    "kindRemindersDesc": "Przed wydarzeniem z Twoich kalendarzy, zgodnie z ustawieniem.",
+    "invitation": "{{actor}} zaprasza Cię na „{{title}}”",
+    "invitationUpdate": "{{actor}} zmienia „{{title}}”",
+    "invitationCancel": "{{actor}} odwołuje „{{title}}”",
+    "invitationDeclined": "{{actor}} odrzuca „{{title}}”",
+    "kindInvitations": "Zaproszenia z kalendarza",
+    "kindInvitationsDesc": "Gdy ktoś zaprasza Cię na wydarzenie, gdy się ono zmienia lub zostaje odwołane, i gdy ktoś odrzuca Twoje zaproszenie."
   },
   "switcher": {
     "title": "Przejdź do rozmowy",
@@ -1701,6 +1707,66 @@
       "workRange": "Od której do której"
     },
     "searchCalendar": "Szukaj kalendarza",
-    "noCalendarFound": "Żaden kalendarz nie pasuje."
+    "noCalendarFound": "Żaden kalendarz nie pasuje.",
+    "me": "Ja",
+    "attendees": "Goście",
+    "addAttendees": "Dodaj gości (imię lub adres)",
+    "inviteByEmail": "Zaproś {{email}} e-mailem",
+    "removeAttendee": "Usuń: {{name}}",
+    "availability": "Dostępność",
+    "busyDuring": "{{name}}: już zajęte o tej porze",
+    "freeDuring": "{{name}}: wolne o tej porze",
+    "busyPeople": "Już zajęci o tej porze: {{names}}",
+    "findSlot": "Znajdź termin",
+    "noSlot": "Brak terminu, w którym wszyscy są wolni w ciągu najbliższych 14 dni.",
+    "organizedBy": "Organizuje: {{name}}",
+    "yourAnswer": "Twoja odpowiedź",
+    "answerSeries": "Dla wszystkich terminów",
+    "answerThisDate": "Dla tego terminu",
+    "invitations": "Otrzymane zaproszenia",
+    "countAccepted_one": "{{count}} tak",
+    "countAccepted_few": "{{count}} tak",
+    "countAccepted_many": "{{count}} tak",
+    "countAccepted_other": "{{count}} tak",
+    "countTentative_one": "{{count}} może",
+    "countTentative_few": "{{count}} może",
+    "countTentative_many": "{{count}} może",
+    "countTentative_other": "{{count}} może",
+    "countDeclined_one": "{{count}} nie",
+    "countDeclined_few": "{{count}} nie",
+    "countDeclined_many": "{{count}} nie",
+    "countDeclined_other": "{{count}} nie",
+    "countWaiting_one": "{{count}} oczekuje",
+    "countWaiting_few": "{{count}} oczekuje",
+    "countWaiting_many": "{{count}} oczekuje",
+    "countWaiting_other": "{{count}} oczekuje",
+    "answer": {
+      "accepted": "Tak",
+      "tentative": "Może",
+      "declined": "Nie"
+    },
+    "status": {
+      "accepted": "Weźmie udział",
+      "tentative": "Może weźmie udział",
+      "declined": "Nie weźmie udziału",
+      "needs_action": "Jeszcze bez odpowiedzi"
+    },
+    "myAnswer": {
+      "needs_action": "Do odpowiedzi",
+      "tentative": "Udział niepewny",
+      "declined": "Odrzucono"
+    }
+  },
+  "invitationPage": {
+    "title": "Zaproszenie",
+    "from": "{{organizer}} zaprasza Cię",
+    "loading": "Wczytywanie zaproszenia…",
+    "goneTitle": "Nie znaleziono zaproszenia",
+    "gone": "Ten link nie prowadzi już do zaproszenia: wydarzenie mogło zostać odwołane.",
+    "recurring": "To wydarzenie się powtarza: Twoja odpowiedź dotyczy wszystkich terminów.",
+    "question": "{{name}}, czy będziesz?",
+    "saved": "Odpowiedź zapisana. Możesz ją zmienić w każdej chwili tym linkiem.",
+    "failed": "Nie udało się zapisać odpowiedzi, spróbuj później.",
+    "footer": "Ruchoir, przestrzeń pracy zespołu, który Cię zaprasza."
   }
 }

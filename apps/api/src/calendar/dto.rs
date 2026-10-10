@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::attendees::{AttendeeDto, AttendeeInput, OrganizerDto};
 use super::authz::CalendarAccess;
 
 /// Read a field that may be absent (`None`), `null` (`Some(None)`) or a value (`Some(Some(v))`).
@@ -132,6 +133,8 @@ pub struct EventInput {
     pub reminder_minutes: Option<Option<i32>>,
     /// Another calendar to move the event to (whole-series changes only).
     pub calendar_id: Option<Uuid>,
+    /// The whole list of attendees (accounts or addresses), for the series; absent leaves it.
+    pub attendees: Option<Vec<AttendeeInput>>,
 }
 
 /// One occurrence, ready to draw.
@@ -156,6 +159,14 @@ pub struct OccurrenceDto {
     pub can_edit: bool,
     /// The reminder the viewer gets for it, in minutes; absent when none.
     pub my_reminder_minutes: Option<i32>,
+    /// The viewer's answer for this occurrence (for the series, on an event): `needs_action`,
+    /// `accepted`, `tentative` or `declined`; `accepted` for the organiser of an event with
+    /// attendees; absent for anyone not on its list.
+    pub my_status: Option<String>,
+    /// Whether the viewer sees it through an invitation alone (its calendar is not theirs to see).
+    pub invited: bool,
+    /// Whether anyone is invited to it.
+    pub has_attendees: bool,
 }
 
 /// An event (or a series' head) with everything the form needs.
@@ -167,6 +178,10 @@ pub struct EventDto {
     pub created_by: Option<Uuid>,
     /// RFC 3339.
     pub updated_at: String,
+    /// Its author, who organises it; absent once their account is gone.
+    pub organizer: Option<OrganizerDto>,
+    /// Who is invited, and their answer for the series.
+    pub attendees: Vec<AttendeeDto>,
 }
 
 /// Which part of a series a change or a deletion touches.
@@ -197,6 +212,9 @@ pub struct OccurrencesQuery {
     pub to: String,
     /// Comma-separated calendar ids; every visible calendar when absent.
     pub calendars: Option<String>,
+    /// Whether to add the events seen through an invitation alone (from calendars the viewer does
+    /// not see); yes when absent.
+    pub invitations: Option<bool>,
 }
 
 /// The viewer's own reminder for one event (its whole series).

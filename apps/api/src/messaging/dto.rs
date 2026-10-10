@@ -456,7 +456,8 @@ pub struct UpdateProfileRequest {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct NotificationDto {
     pub id: Uuid,
-    /// `mention`, `broadcast`, `reply`, `dm`, `message`, or `calendar_reminder`.
+    /// `mention`, `broadcast`, `reply`, `dm`, `message`, `calendar_reminder`, or an invitation kind:
+    /// `calendar_invitation`, `calendar_update`, `calendar_cancel`, `calendar_declined`.
     pub kind: String,
     /// The conversation a message notification is about; absent for a reminder.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -505,6 +506,13 @@ pub struct NotificationDto {
     pub event_location: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub calendar_name: Option<String>,
+    /// What changed, for a `calendar_update`: `time`, `location`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_changes: Option<Vec<String>>,
+    /// The recipient's answer to the event as it stands now, for an invitation kind they are on the
+    /// list of.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_my_status: Option<String>,
 }
 
 /// A page of notifications, newest first, with the caller's total unread count.

@@ -19,12 +19,14 @@ use sea_orm::{
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
+use super::attendees;
 use super::authz;
 use super::error::CalendarError;
 use super::events::{date_text, exception_inputs, instant_text, series_of, FALLBACK_TIME_ZONE};
 use super::recurrence::{self, RecurrenceId, When};
 use crate::auth::mail_text::{self, Locale, ReminderDay};
 use crate::entities::{
+    calendar_attendee_overrides as attendee_overrides, calendar_event_attendees as attendee_rows,
     calendar_event_exceptions as exceptions, calendar_event_reminders, calendar_events,
     calendar_reminder_prefs, calendars, notifications, spaces, users,
 };
@@ -125,6 +127,103 @@ fn occurrence_key(when: &When) -> OffsetDateTime {
     }
 }
 
+/// Who an event with attendees reminds, and who declined which of its dates.
+#[derive(Default)]
+struct Invited {
+    /// Event → the people it reminds: its organiser and attendees who may still be invited.
+    audiences: HashMap<Uuid, Vec<Uuid>>,
+    /// (event, person) → their answer for the series, and for its dates.
+    answers: HashMap<(Uuid, Uuid), (String, HashMap<String, String>)>,
+}
+
+impl Invited {
+    async fn load<C: ConnectionTrait>(
+        db: &C,
+        events: &[calendar_events::Model],
+        calendars: &HashMap<Uuid, calendars::Model>,
+        audiences: &HashMap<Uuid, Vec<Uuid>>,
+    ) -> Result<Self, CalendarError> {
+        let rows = attendee_rows::Entity::find()
+            .filter(attendee_rows::Column::EventId.is_in(events.iter().map(|e| e.id)))
+            .filter(attendee_rows::Column::UserId.is_not_null())
+            .all(db)
+            .await?;
+        if rows.is_empty() {
+            return Ok(Self::default());
+        }
+        let mut dates: HashMap<Uuid, HashMap<String, String>> = HashMap::new();
+        for answer in attendee_overrides::Entity::find()
+            .filter(attendee_overrides::Column::AttendeeId.is_in(rows.iter().map(|r| r.id)))
+            .all(db)
+            .await?
+        {
+            dates
+                .entry(answer.attendee_id)
+                .or_default()
+                .insert(answer.recurrence_id, answer.status);
+        }
+        let mut found = Self::default();
+        let mut by_event: HashMap<Uuid, Vec<&attendee_rows::Model>> = HashMap::new();
+        for row in &rows {
+            by_event.entry(row.event_id).or_default().push(row);
+        }
+        for event in events {
+            let Some(list) = by_event.get(&event.id) else {
+                continue;
+            };
+            let Some(calendar) = calendars.get(&event.calendar_id) else {
+                continue;
+            };
+            let seeing = audiences.get(&calendar.id).cloned().unwrap_or_default();
+            let invitees: Vec<Uuid> = list.iter().filter_map(|r| r.user_id).collect();
+            let still: HashSet<Uuid> = match calendar.owner_user_id {
+                Some(owner) => attendees::invitable(db, calendar, owner, &invitees).await?,
+                None => invitees
+                    .iter()
+                    .copied()
+                    .filter(|u| seeing.contains(u))
+                    .collect(),
+            };
+            let mut people: Vec<Uuid> = event
+                .created_by
+                .filter(|o| seeing.contains(o))
+                .into_iter()
+                .collect();
+            for row in list {
+                let Some(user) = row.user_id.filter(|u| still.contains(u)) else {
+                    continue;
+                };
+                people.push(user);
+                found.answers.insert(
+                    (event.id, user),
+                    (
+                        row.status.clone(),
+                        dates.remove(&row.id).unwrap_or_default(),
+                    ),
+                );
+            }
+            found.audiences.insert(event.id, people);
+        }
+        Ok(found)
+    }
+
+    fn people(&self) -> impl Iterator<Item = Uuid> + '_ {
+        self.audiences.values().flatten().copied()
+    }
+
+    fn audience(&self, event_id: Uuid) -> Option<&[Uuid]> {
+        self.audiences.get(&event_id).map(Vec::as_slice)
+    }
+
+    fn declined(&self, event_id: Uuid, person: Uuid, date: Option<RecurrenceId>) -> bool {
+        let Some((series, dates)) = self.answers.get(&(event_id, person)) else {
+            return false;
+        };
+        let own = date.and_then(|d| dates.get(&d.to_key()));
+        own.unwrap_or(series) == attendees::DECLINED
+    }
+}
+
 /// Run one sweep as of `now`.
 pub async fn sweep(state: &AppState, now: OffsetDateTime) -> Result<SweepReport, CalendarError> {
     let (from, to) = (now - Duration::days(1), now + Duration::days(2));
@@ -186,10 +285,14 @@ pub async fn sweep(state: &AppState, now: OffsetDateTime) -> Result<SweepReport,
     for calendar in calendars.values() {
         audiences.insert(calendar.id, authz::audience(&state.db, calendar).await?);
     }
+    // An event with attendees reminds its organiser and its attendees who still may be invited,
+    // and only them; each one's answer for a date decides that date.
+    let invited = Invited::load(&state.db, &events, &calendars, &audiences).await?;
     let people: Vec<Uuid> = audiences
         .values()
         .flatten()
         .copied()
+        .chain(invited.people())
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
@@ -212,7 +315,11 @@ pub async fn sweep(state: &AppState, now: OffsetDateTime) -> Result<SweepReport,
         if occurrences.is_empty() {
             continue;
         }
-        for person in audiences.get(&calendar.id).into_iter().flatten() {
+        let audience: Vec<Uuid> = match invited.audience(event.id) {
+            Some(people) => people.to_vec(),
+            None => audiences.get(&calendar.id).cloned().unwrap_or_default(),
+        };
+        for person in &audience {
             let Some(minutes) = effective_minutes(
                 event_prefs.get(&(*person, event.id)).copied(),
                 calendar_prefs.get(&(*person, calendar.id)).copied(),
@@ -223,6 +330,9 @@ pub async fn sweep(state: &AppState, now: OffsetDateTime) -> Result<SweepReport,
             };
             let zone = reader_time_zone(readers.get(person));
             for occurrence in &occurrences {
+                if invited.declined(event.id, *person, occurrence.recurrence_id) {
+                    continue;
+                }
                 let Some(at) = due_at(&occurrence.when, minutes, &zone) else {
                     continue;
                 };
@@ -258,6 +368,7 @@ pub async fn sweep(state: &AppState, now: OffsetDateTime) -> Result<SweepReport,
             message_id: sea_orm::ActiveValue::Set(None),
             event_id: sea_orm::ActiveValue::Set(Some(event_id)),
             occurrence_start: sea_orm::ActiveValue::Set(Some(occurrence)),
+            payload: sea_orm::ActiveValue::Set(None),
             actor_id: sea_orm::ActiveValue::Set(None),
             created_at: sea_orm::ActiveValue::Set(now),
             read_at: sea_orm::ActiveValue::Set(None),
@@ -501,6 +612,8 @@ pub async fn hydrate<C: ConnectionTrait>(
                     None => event.location.clone(),
                 },
                 calendar_name: calendar.map(|c| c.name.clone()),
+                event_changes: None,
+                event_my_status: None,
             })
         })
         .collect())
@@ -598,6 +711,8 @@ mod tests {
             event_all_day: Some(false),
             event_location: None,
             calendar_name: None,
+            event_changes: None,
+            event_my_status: None,
         };
         // Due ten minutes before; the sweep runs 30 seconds after that.
         let now = start - Duration::minutes(10) + Duration::seconds(30);

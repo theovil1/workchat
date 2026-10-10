@@ -21,6 +21,7 @@ export type CalendarOverlaysProps = {
   filter: Filter;
   /** The space the screen is on, offered first when choosing a calendar. */
   currentSpaceId?: string;
+  viewerId?: string;
   opened: Occurrence | null;
   draft: Draft | null;
   settings: SettingsTarget | null;
@@ -31,12 +32,12 @@ export type CalendarOverlaysProps = {
 };
 
 /** The calendar's windows: an event's details, the event form, a calendar's settings. */
-export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter, currentSpaceId, opened, draft, settings, onClose, onChanged, onNotify }: CalendarOverlaysProps) {
+export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter, currentSpaceId, viewerId, opened, draft, settings, onClose, onChanged, onNotify }: CalendarOverlaysProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<{ occurrence: Occurrence; event: CalendarEvent } | null>(null);
   const spaceName = (id?: string) => spaces.find((s) => s.id === id)?.name;
   const label = (calendar?: Calendar) => {
-    if (!calendar) return "";
+    if (!calendar) return t("calendar.invitations");
     const space = spaceName(calendar.spaceId);
     return space && space !== calendar.name ? `${space} · ${calendar.name}` : calendar.name;
   };
@@ -64,7 +65,7 @@ export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter,
     return <CalendarSettingsDialog calendar={calendar} spaceId={spaceId} spaceName={spaceName(spaceId)} suggestedColor={freeColor(calendars)} onDone={finish} onClose={close} />;
   }
   if (editing) {
-    return <EventForm compact={compact} calendars={calendars} currentSpaceId={currentSpaceId} spaces={spaces} timeZone={timeZone} editing={editing} onDone={finish} onCancel={close} />;
+    return <EventForm compact={compact} calendars={calendars} currentSpaceId={currentSpaceId} viewerId={viewerId} spaces={spaces} timeZone={timeZone} editing={editing} onDone={finish} onCancel={close} />;
   }
   if (draft) {
     // A new event goes first in the filtered space's default calendar, when the viewer may write in it.
@@ -76,6 +77,7 @@ export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter,
         compact={compact}
         calendars={calendars}
         currentSpaceId={currentSpaceId}
+        viewerId={viewerId}
         spaces={spaces}
         timeZone={timeZone}
         draft={{ ...draft, calendarId: preferred }}
@@ -92,8 +94,10 @@ export function CalendarOverlays({ compact, timeZone, spaces, calendars, filter,
         calendar={calendar}
         calendarLabel={label(calendar)}
         timeZone={timeZone}
+        viewerId={viewerId}
         onEdit={(event) => setEditing({ occurrence: opened, event })}
         onDone={finish}
+        onChanged={onChanged}
         onClose={close}
       />
     );

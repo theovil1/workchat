@@ -262,7 +262,13 @@
     "emailOff": "Die E-Mail-Zusammenfassung ist deaktiviert: Es wird keine E-Mail gesendet.",
     "reminder": "Erinnerung: {{title}}",
     "kindReminders": "Kalendererinnerungen",
-    "kindRemindersDesc": "Vor einem Termin Ihrer Kalender, wie eingestellt."
+    "kindRemindersDesc": "Vor einem Termin Ihrer Kalender, wie eingestellt.",
+    "invitation": "{{actor}} lädt Sie zu „{{title}}“ ein",
+    "invitationUpdate": "{{actor}} hat „{{title}}“ geändert",
+    "invitationCancel": "{{actor}} hat „{{title}}“ abgesagt",
+    "invitationDeclined": "{{actor}} hat „{{title}}“ abgelehnt",
+    "kindInvitations": "Kalendereinladungen",
+    "kindInvitationsDesc": "Wenn Sie zu einem Termin eingeladen werden, wenn er sich ändert oder abgesagt wird, und wenn jemand eine Ihrer Einladungen ablehnt."
   },
   "switcher": {
     "title": "Zu einer Unterhaltung wechseln",
@@ -1581,6 +1587,58 @@
       "workRange": "Von wann bis wann"
     },
     "searchCalendar": "Kalender suchen",
-    "noCalendarFound": "Kein Kalender passt."
+    "noCalendarFound": "Kein Kalender passt.",
+    "me": "Ich",
+    "attendees": "Gäste",
+    "addAttendees": "Gäste hinzufügen (Name oder Adresse)",
+    "inviteByEmail": "{{email}} per E-Mail einladen",
+    "removeAttendee": "{{name}} entfernen",
+    "availability": "Verfügbarkeit",
+    "busyDuring": "{{name}} hat zu dieser Zeit schon etwas",
+    "freeDuring": "{{name}} ist zu dieser Zeit frei",
+    "busyPeople": "Zu dieser Zeit schon belegt: {{names}}",
+    "findSlot": "Termin finden",
+    "noSlot": "Kein Termin, an dem alle in den nächsten 14 Tagen frei sind.",
+    "organizedBy": "Organisiert von {{name}}",
+    "yourAnswer": "Ihre Antwort",
+    "answerSeries": "Für alle Termine",
+    "answerThisDate": "Für diesen Termin",
+    "invitations": "Erhaltene Einladungen",
+    "countAccepted_one": "{{count}} Ja",
+    "countAccepted_other": "{{count}} Ja",
+    "countTentative_one": "{{count}} Vielleicht",
+    "countTentative_other": "{{count}} Vielleicht",
+    "countDeclined_one": "{{count}} Nein",
+    "countDeclined_other": "{{count}} Nein",
+    "countWaiting_one": "{{count}} ausstehend",
+    "countWaiting_other": "{{count}} ausstehend",
+    "answer": {
+      "accepted": "Ja",
+      "tentative": "Vielleicht",
+      "declined": "Nein"
+    },
+    "status": {
+      "accepted": "Nimmt teil",
+      "tentative": "Nimmt vielleicht teil",
+      "declined": "Nimmt nicht teil",
+      "needs_action": "Noch keine Antwort"
+    },
+    "myAnswer": {
+      "needs_action": "Zu beantworten",
+      "tentative": "Noch unsicher",
+      "declined": "Abgelehnt"
+    }
+  },
+  "invitationPage": {
+    "title": "Einladung",
+    "from": "{{organizer}} lädt Sie ein",
+    "loading": "Einladung wird geladen…",
+    "goneTitle": "Einladung nicht gefunden",
+    "gone": "Dieser Link führt zu keiner Einladung mehr: Der Termin wurde vielleicht abgesagt.",
+    "recurring": "Dieser Termin wiederholt sich: Ihre Antwort gilt für alle Termine.",
+    "question": "{{name}}, sind Sie dabei?",
+    "saved": "Antwort gespeichert. Sie können sie jederzeit über diesen Link ändern.",
+    "failed": "Ihre Antwort konnte gerade nicht gespeichert werden, versuchen Sie es später erneut.",
+    "footer": "Ruchoir, der Arbeitsbereich des Teams, das Sie einlädt."
   }
 }

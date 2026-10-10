@@ -162,6 +162,7 @@ export function CalendarSidebar({
   calendars,
   spaces,
   currentSpaceId,
+  invitations,
   onToggle,
   onToggleMany,
   onSettings,
@@ -174,6 +175,9 @@ export function CalendarSidebar({
   spaces: Space[];
   /** The space the screen is on, listed first and in full. */
   currentSpaceId?: string;
+  /** What the viewer is invited to from calendars they do not see, shown as one more calendar of
+   *  theirs (absent when there is none). */
+  invitations?: { hidden: boolean; color: Calendar["color"]; onToggle: () => void };
   onToggle: (calendar: Calendar) => void;
   /** Show or hide several calendars at once: a folded space's. */
   onToggleMany: (calendars: Calendar[], hidden: boolean) => void;
@@ -320,6 +324,17 @@ export function CalendarSidebar({
         <section style={section}>
           {heading(t("calendar.mine"), newIn())}
           {mine.map((c) => calendarRow(c))}
+          {invitations ? (
+            <div className="wc-calrow">
+              <Swatch
+                color={colorVar(invitations.color)}
+                state={invitations.hidden ? "off" : "on"}
+                label={t(invitations.hidden ? "calendar.show" : "calendar.hide", { name: t("calendar.invitations") })}
+                onClick={invitations.onToggle}
+              />
+              <span style={label(invitations.hidden)}>{t("calendar.invitations")}</span>
+            </div>
+          ) : null}
         </section>
 
         {current ? (

@@ -110,13 +110,16 @@ export function rangeFor(view: View, anchor: string, tz: string, weekStart = 1):
   return { from: zonedTime(first, 0, tz), to: zonedTime(addDays(first, days), 0, tz) };
 }
 
-/** Whether an occurrence is shown in full under `filter`. A personal calendar always is; outside the
- *  filter, the others are drawn struck through, not hidden. */
+/** Whether an occurrence is shown in full under `filter`. A personal calendar always is, and so is
+ *  an invitation the viewer did not decline; outside the filter, the others are drawn struck
+ *  through, not hidden. */
 export function inFilter(
-  occurrence: { calendarId: string },
+  occurrence: { calendarId: string; myStatus?: string; invited?: boolean },
   calendars: ReadonlyArray<{ id: string; spaceId?: string }>,
   filter: Filter,
 ): boolean {
+  // What the viewer is invited to and did not decline is theirs, wherever it comes from.
+  if (occurrence.myStatus && occurrence.myStatus !== "declined") return true;
   const calendar = calendars.find((c) => c.id === occurrence.calendarId);
   if (!calendar) return false;
   if (!calendar.spaceId || filter.kind === "all") return true;
@@ -229,4 +232,36 @@ export function clashes<T extends { eventId: string; allDay: boolean; start: str
     const end = Date.parse(o.allDay ? zonedTime(o.end, 0, tz) : o.end);
     return start < to && from < end;
   });
+}
+
+/**
+ * Up to `limit` slots of `duration` minutes when nobody in `busy` is taken, from `from` on, over
+ * `days` days: within `[dayStart, dayEnd)` hours of `tz`, on the half hour, without Saturday and
+ * Sunday unless `weekends`. The slots proposed do not overlap one another.
+ */
+export function freeSlots(
+  busy: ReadonlyArray<{ start: string; end: string }>,
+  opts: { from: string; days: number; duration: number; dayStart: number; dayEnd: number; weekends: boolean; tz: string; limit?: number },
+): { start: string; end: string }[] {
+  const limit = opts.limit ?? 3;
+  const from = Date.parse(opts.from);
+  const taken = busy.map((b) => [Date.parse(b.start), Date.parse(b.end)] as const);
+  const found: { start: string; end: string }[] = [];
+  const first = localDay(opts.from, opts.tz);
+  for (let d = 0; d < opts.days && found.length < limit; d += 1) {
+    const day = addDays(first, d);
+    if (!opts.weekends && weekdayOf(day) >= 5) continue;
+    let minutes = opts.dayStart * 60;
+    while (minutes + opts.duration <= opts.dayEnd * 60 && found.length < limit) {
+      const start = Date.parse(zonedTime(day, minutes, opts.tz));
+      const end = start + opts.duration * 60_000;
+      if (start >= from && !taken.some(([a, b]) => a < end && start < b)) {
+        found.push({ start: new Date(start).toISOString().replace(".000Z", "Z"), end: new Date(end).toISOString().replace(".000Z", "Z") });
+        minutes += opts.duration;
+      } else {
+        minutes += 30;
+      }
+    }
+  }
+  return found;
 }

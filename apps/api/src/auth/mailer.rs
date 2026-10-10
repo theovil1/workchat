@@ -154,6 +154,20 @@ impl Mailer {
                     .singlepart(SinglePart::html(email.html.clone()))
                     .singlepart(logo),
             );
+        // An invitation travels with its `.ics`, which mail clients offer to add to a calendar.
+        let body = match &email.calendar {
+            None => body,
+            Some(part) => MultiPart::mixed().multipart(body).singlepart(
+                Attachment::new("invitation.ics".to_owned()).body(
+                    part.body.clone(),
+                    ContentType::parse(&format!(
+                        "text/calendar; charset=utf-8; method={}",
+                        part.method
+                    ))
+                    .map_err(|e| format!("content type: {e}"))?,
+                ),
+            ),
+        };
         let message = Message::builder()
             .from(from)
             .to(to)

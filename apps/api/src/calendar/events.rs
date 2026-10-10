@@ -21,10 +21,12 @@ use sea_orm::{
 use time::{Date, Duration, OffsetDateTime};
 use uuid::Uuid;
 
+use super::attendees::{self, Attendance, OrganizerDto, ResponseInput};
 use super::authz::{self, CalendarAccess};
 use super::calendars::announce;
 use super::dto::{EditQuery, EditScope, EventDto, EventInput, EventMe, OccurrenceDto};
 use super::error::CalendarError;
+use super::invitations::{self, Cancellation, Notice};
 use super::recurrence::{self, ExceptionInput, RecurrenceId, RuleOrigin, SeriesInput, When};
 use super::reminders::effective_minutes;
 use super::{ALL_DAY_REMINDERS, TIMED_REMINDERS};
@@ -169,6 +171,20 @@ async fn event_dto<C: ConnectionTrait>(
 ) -> Result<EventDto, CalendarError> {
     let reminders =
         ViewerReminders::load(db, user_id, vec![event.id], vec![access.calendar.id]).await?;
+    let attendance = Attendance::load(db, user_id, &[event.id]).await?;
+    let invited = attendees::row_of(db, event.id, user_id).await?.is_some()
+        && authz::access(db, user_id, event.calendar_id).await.is_err();
+    let list = attendees::list(db, event.id).await?;
+    let organizer = match event.created_by {
+        Some(author) => attendees::names(db, [author])
+            .await?
+            .remove(&author)
+            .map(|name| OrganizerDto {
+                user_id: author,
+                name,
+            }),
+        None => None,
+    };
     let (start, end) = when_texts(&when_of(&event));
     let head = OccurrenceDto {
         event_id: event.id,
@@ -185,12 +201,17 @@ async fn event_dto<C: ConnectionTrait>(
         overridden: false,
         can_edit: access.can_write_events,
         my_reminder_minutes: reminders.effective(&event, &access.calendar),
+        my_status: attendance.status(&event, user_id, None),
+        invited,
+        has_attendees: attendance.has_attendees(event.id),
     };
     Ok(EventDto {
         head,
         rrule: event.rrule,
         created_by: event.created_by,
         updated_at: instant_text(event.updated_at),
+        organizer,
+        attendees: attendees::dtos(db, &list).await?,
     })
 }
 
@@ -379,7 +400,8 @@ async fn set_my_reminder<C: ConnectionTrait>(
     Ok(())
 }
 
-/// The event and the caller's access to its calendar; `NotFound` when they cannot see it.
+/// The event and the caller's access to it: through its calendar, or read only through an
+/// invitation; `NotFound` when they cannot see it.
 async fn load_event<C: ConnectionTrait>(
     db: &C,
     user_id: Uuid,
@@ -389,8 +411,16 @@ async fn load_event<C: ConnectionTrait>(
         .one(db)
         .await?
         .ok_or(CalendarError::NotFound)?;
-    let access = authz::access(db, user_id, event.calendar_id).await?;
-    Ok((event, access))
+    match authz::access(db, user_id, event.calendar_id).await {
+        Ok(access) => Ok((event, access)),
+        Err(CalendarError::NotFound) => {
+            match attendees::invitation_access(db, user_id, &event).await? {
+                Some(access) => Ok((event, access)),
+                None => Err(CalendarError::NotFound),
+            }
+        }
+        Err(other) => Err(other),
+    }
 }
 
 fn required_recurrence_id(query: &EditQuery) -> Result<RecurrenceId, CalendarError> {
@@ -485,8 +515,32 @@ pub async fn create_event(
     if let Some(minutes) = input.reminder_minutes {
         set_my_reminder(&txn, session.user_id, event.id, minutes).await?;
     }
+    let invited = match &input.attendees {
+        Some(list) => {
+            attendees::replace(
+                &txn,
+                &event,
+                &access.calendar,
+                session.user_id,
+                list,
+                &state.secret_key,
+            )
+            .await?
+            .added
+        }
+        None => Vec::new(),
+    };
     txn.commit().await?;
     announce(&state, &access.calendar).await?;
+    if !invited.is_empty() {
+        invitations::send(
+            &state,
+            Some(&event),
+            Some(session.user_id),
+            Notice::Invited(invited),
+        )
+        .await;
+    }
     Ok((
         StatusCode::CREATED,
         Json(event_dto(&state.db, session.user_id, event, &access).await?),
@@ -593,6 +647,10 @@ pub async fn update_event(
     }
 
     let mut touched = vec![access.calendar.clone()];
+    // What the attendees will hear about: what changed, and for which date.
+    let before_when = when_of(&event);
+    let mut changes: Vec<String>;
+    let mut change_date: Option<RecurrenceId> = None;
     let txn = state.db.begin().await?;
     let result_id = match scope {
         EditScope::This => {
@@ -602,6 +660,13 @@ pub async fn update_event(
                     "This occurrence is not one of the series.",
                 ));
             }
+            changes = invitations::changes_between(
+                &recurrence::occurrence_when(&before_when, id),
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
+            change_date = Some(id);
             if all_day != event.all_day {
                 return Err(CalendarError::Invalid(
                     "An occurrence keeps its series' all-day setting.",
@@ -650,6 +715,12 @@ pub async fn update_event(
         }
         EditScope::Following => {
             let at = required_recurrence_id(&query)?;
+            changes = invitations::changes_between(
+                &recurrence::occurrence_when(&before_when, at),
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
             let old_rule = event.rrule.clone().unwrap_or_default();
             let (first_rule, second_rule) =
                 recurrence::split_rule(&old_rule, &when_of(&event), event.tzid.as_deref(), &at)?;
@@ -703,6 +774,8 @@ pub async fn update_event(
                     rekey(&txn, row, new_event.id, shift).await?;
                 }
             }
+            // The attendees and their answers go with the new series.
+            attendees::copy_to(&txn, event.id, new_event.id, &at, shift, &state.secret_key).await?;
             // Everyone's choice of reminder for the series carries over.
             for pref in calendar_event_reminders::Entity::find()
                 .filter(calendar_event_reminders::Column::EventId.eq(event.id))
@@ -725,6 +798,17 @@ pub async fn update_event(
             }
             let before = when_of(&event);
             let timing_changed = before != parsed.when || event.tzid != parsed.tzid;
+            changes = invitations::changes_between(
+                &before,
+                &parsed.when,
+                event.location.as_deref(),
+                parsed.location.as_deref(),
+            );
+            if !changes.iter().any(|c| c == "time")
+                && (event.rrule != parsed.rrule || event.tzid != parsed.tzid)
+            {
+                changes.insert(0, "time".to_owned());
+            }
             if timing_changed {
                 let shift = delta(&before, &parsed.when);
                 let kind_changed = event.all_day != all_day;
@@ -759,9 +843,64 @@ pub async fn update_event(
     if let Some(minutes) = input.reminder_minutes {
         set_my_reminder(&txn, session.user_id, result_id, minutes).await?;
     }
+    let list_change = match &input.attendees {
+        Some(list) => {
+            let result = calendar_events::Entity::find_by_id(result_id)
+                .one(&txn)
+                .await?
+                .ok_or(CalendarError::Internal)?;
+            let calendar = touched.last().unwrap_or(&access.calendar);
+            attendees::replace(
+                &txn,
+                &result,
+                calendar,
+                session.user_id,
+                list,
+                &state.secret_key,
+            )
+            .await?
+        }
+        None => attendees::Change::default(),
+    };
     txn.commit().await?;
     for calendar in &touched {
         announce(&state, calendar).await?;
+    }
+    let result = calendar_events::Entity::find_by_id(result_id)
+        .one(&state.db)
+        .await?;
+    let actor = Some(session.user_id);
+    if !list_change.removed.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Removed(list_change.removed),
+        )
+        .await;
+    }
+    let newcomers: Vec<Uuid> = list_change.added.iter().map(|r| r.id).collect();
+    if !list_change.added.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Invited(list_change.added),
+        )
+        .await;
+    }
+    if !changes.is_empty() {
+        invitations::send(
+            &state,
+            result.as_ref(),
+            actor,
+            Notice::Updated {
+                changes,
+                date: change_date,
+                except: newcomers,
+            },
+        )
+        .await;
     }
     let (result, result_access) = load_event(&state.db, session.user_id, result_id).await?;
     Ok(Json(
@@ -819,6 +958,17 @@ pub async fn delete_event(
     if scope == EditScope::Following && required_recurrence_id(&query)? == first_id(&event) {
         scope = EditScope::All;
     }
+    // Its attendees are told, with the event as it was.
+    let listed = attendees::list(&state.db, event.id).await?;
+    let cancelled_date = match scope {
+        EditScope::All => None,
+        _ => Some(required_recurrence_id(&query)?),
+    };
+    let cancelled = if listed.is_empty() {
+        None
+    } else {
+        Some(invitations::snapshot(&state.db, &event, cancelled_date, Vec::new()).await?)
+    };
     let txn = state.db.begin().await?;
     match scope {
         EditScope::All => {
@@ -896,6 +1046,29 @@ pub async fn delete_event(
     }
     txn.commit().await?;
     announce(&state, &access.calendar).await?;
+    if let Some(snapshot) = cancelled {
+        let after = match scope {
+            EditScope::All => None,
+            _ => {
+                calendar_events::Entity::find_by_id(event.id)
+                    .one(&state.db)
+                    .await?
+            }
+        };
+        invitations::send(
+            &state,
+            after.as_ref(),
+            Some(session.user_id),
+            Notice::Cancelled(Box::new(Cancellation {
+                event: event.clone(),
+                snapshot,
+                attendees: listed,
+                date: cancelled_date,
+                after: after.clone(),
+            })),
+        )
+        .await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -936,4 +1109,76 @@ pub async fn put_event_me(
         )
         .await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `PUT /api/v1/events/{event_id}/response`: the caller's answer to an invitation, for the series or
+/// for one date of it.
+#[utoipa::path(
+    put,
+    path = "/api/v1/events/{event_id}/response",
+    tag = "calendar",
+    params(("event_id" = Uuid, Path, description = "Event id")),
+    request_body = ResponseInput,
+    responses(
+        (status = 200, description = "The event, with the answer", body = EventDto),
+        (status = 403, description = "Not invited to it"),
+        (status = 404, description = "No such event for the caller"),
+        (status = 422, description = "Not an answer, or not a date of the series")
+    )
+)]
+pub async fn respond(
+    State(state): State<AppState>,
+    session: AuthSession,
+    Path(event_id): Path<Uuid>,
+    Json(body): Json<ResponseInput>,
+) -> Result<Json<EventDto>, CalendarError> {
+    let (event, access) = load_event(&state.db, session.user_id, event_id).await?;
+    let row = attendees::row_of(&state.db, event.id, session.user_id)
+        .await?
+        .ok_or(CalendarError::Forbidden)?;
+    if !attendees::is_answer(&body.status) {
+        return Err(CalendarError::Invalid(
+            "An answer is accepted, tentative or declined.",
+        ));
+    }
+    let date = match body.recurrence_id.as_deref() {
+        None => None,
+        Some(key) => {
+            let id = RecurrenceId::from_key(key).ok_or(CalendarError::Invalid(
+                "This occurrence is not one of the series.",
+            ))?;
+            if event.rrule.is_none() || !names_an_occurrence(&event, &id)? {
+                return Err(CalendarError::Invalid(
+                    "This occurrence is not one of the series.",
+                ));
+            }
+            Some(id)
+        }
+    };
+    attendees::answer(&state.db, &row, &body.status, date.as_ref()).await?;
+    // A refusal tells the organiser once, not at every click on the same answer.
+    let again = date.is_none() && row.status == attendees::DECLINED;
+    if body.status == attendees::DECLINED && !again {
+        invitations::send(
+            &state,
+            Some(&event),
+            Some(session.user_id),
+            Notice::Declined {
+                attendee: row,
+                date,
+            },
+        )
+        .await;
+    }
+    announce(&state, &access.calendar).await?;
+    state
+        .hub
+        .publish(
+            vec![session.user_id],
+            RealtimeEnvelope::calendar_changed(event.calendar_id),
+        )
+        .await;
+    Ok(Json(
+        event_dto(&state.db, session.user_id, event, &access).await?,
+    ))
 }
