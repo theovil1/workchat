@@ -19,6 +19,14 @@ context and takes precedence here.
   `dm_conversations`, `messages` and their satellites (reactions, mentions, link previews,
   attachments, pins, saved, read cursors), and `files`/`file_versions`/`file_shares`. Relations are
   added when query code needs them.
+- `src/calendar/` - the calendar (`docs/calendar.md`, ADR 0004): `recurrence` (pure: unfolding a
+  rule over a period in the event's own time zone, cutting a series, `VTIMEZONE` blocks; the only
+  place `chrono` is used), `authz` (who sees and changes which calendar, and the lazily created
+  default calendars), `calendars` and `events` (the handlers; `scope` = this / following / all),
+  `occurrences` (a period, unfolded), `feeds` and `ics` (the read-only subscription, public under
+  `/api/v1/public/ical/`), and `reminders` (the minute sweep, the per-person effective reminder, and
+  how a reminder is drawn in the inbox, a push and a mail). Its tests are in
+  `src/tests_integration/calendar_tests.rs`, a child module of the integration tests.
 - `src/bootstrap.rs` - the `bootstrap` subcommand: creates the first administrator of a fresh
   instance (and optionally their first space), from the environment or with the password piped on
   standard input. Refuses once any account exists, so it cannot mint a second identity later.

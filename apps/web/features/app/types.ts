@@ -2,6 +2,7 @@
 export type AppView =
   | "channel"
   | "files"
+  | "calendar"
   | "settings"
   | "prefs"
   | "instance-admin"

@@ -266,7 +266,10 @@ pub fn router(state: AppState) -> Router {
             .expect("valid rate-limit configuration"),
     );
     let public_links =
-        crate::files::links::public_router().layer(GovernorLayer::new(links_governor));
+        crate::files::links::public_router().layer(GovernorLayer::new(links_governor.clone()));
+    // Calendar subscriptions answer without a session too: a guessed token is limited the same way.
+    let public_feeds =
+        crate::calendar::feeds::public_router().layer(GovernorLayer::new(links_governor));
 
     let mut router = Router::new()
         .route("/healthz", get(healthz))
@@ -275,6 +278,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/openapi.json", get(crate::openapi::openapi_json))
         .nest("/api/v1/auth", auth_routes)
         .merge(public_links)
+        .merge(public_feeds)
         // The messaging REST surface and the real-time transport use absolute `/api/v1/...` paths
         // and merge in here. Both are guarded per request by the `AuthSession` extractor, so no
         // blanket auth layer is needed. Merging (not a second `/api/v1` nest) avoids path overlap
@@ -297,7 +301,9 @@ pub fn router(state: AppState) -> Router {
             state.config.upload_max_bytes.saturating_add(1 << 20) as usize,
         ))
         // Live office editing: opening a file in the editor, blank documents (404 when off).
-        .merge(crate::office::router());
+        .merge(crate::office::router())
+        // The calendar: calendars, events, reminders, subscription addresses.
+        .merge(crate::calendar::router());
 
     // Optional self-hosted emoji pack. `ServeDir` handles path traversal safely and returns 404
     // for missing files, which the client treats as "no asset" and renders the native glyph. The

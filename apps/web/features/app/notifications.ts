@@ -9,6 +9,7 @@
  * them from the unread count without discarding the read state of the others.
  */
 
+import type { ReminderInfo } from "@/lib/data/api";
 import { key, type Translate, type TranslationKey } from "@/lib/i18n";
 
 /**
@@ -20,7 +21,7 @@ import { key, type Translate, type TranslationKey } from "@/lib/i18n";
  * other. `message` is any other message, for someone who asked to hear about every one of them in
  * that conversation (its level, its space's, or their own default).
  */
-export type NotifKind = "mention" | "broadcast" | "reply" | "dm" | "message";
+export type NotifKind = "mention" | "broadcast" | "reply" | "dm" | "message" | "calendar_reminder";
 
 /** Whether a kind belongs under the Mentions badge: named directly, or addressed with the room. */
 export function isMention(kind: NotifKind): boolean {
@@ -54,6 +55,8 @@ export type AppNotification = {
   /** When the triggering message was sent (RFC 3339): the words around it are drawn per reader. */
   createdAt: string;
   read: boolean;
+  /** A calendar reminder's event; its `channelId` and `messageId` are empty. */
+  reminder?: ReminderInfo;
 };
 
 /**
@@ -109,6 +112,9 @@ export type NotifPrefs = {
   emailReplies: boolean;
   emailDirectMessages: boolean;
   emailMessages: boolean;
+  /** Reminders before an event of the person's calendars, in the app and by mail. */
+  calendarReminders: boolean;
+  emailCalendarReminders: boolean;
 };
 
 export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
@@ -128,6 +134,8 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   emailReplies: true,
   emailDirectMessages: true,
   emailMessages: false,
+  calendarReminders: true,
+  emailCalendarReminders: true,
 };
 
 /** Whether two sets of global preferences say the same thing, field by field. */
@@ -153,6 +161,7 @@ const KIND_VERB: Record<NotifKind, TranslationKey> = {
   reply: key("notif.replied"),
   dm: key("notif.dm"),
   message: key("notif.wrote"),
+  calendar_reminder: key("notif.reminder"),
 };
 
 /**
@@ -162,6 +171,7 @@ const KIND_VERB: Record<NotifKind, TranslationKey> = {
  * components, and each of them already holds it.
  */
 export function notifSummary(n: AppNotification, t: Translate): string {
+  if (n.reminder) return t(KIND_VERB.calendar_reminder, { title: n.reminder.title });
   return `${n.actor} ${t(KIND_VERB[n.kind])}`;
 }
 
@@ -177,11 +187,13 @@ export function passesPref(
   spaceLevel?: NotifLevel,
 ): boolean {
   if (!prefs.enabled) return false;
+  // A reminder belongs to no conversation: its own switch decides.
+  if (n.kind === "calendar_reminder") return prefs.calendarReminders ?? true;
   if (channelPref?.muted) return false;
   const level = effectiveLevel(channelPref, spaceLevel);
   if (level === "none") return false;
   if (n.kind === "message") return level === "all" || (level === "default" && prefs.messages);
-  const wanted: Record<Exclude<NotifKind, "message">, boolean> = {
+  const wanted: Record<Exclude<NotifKind, "message" | "calendar_reminder">, boolean> = {
     mention: prefs.mentions ?? true,
     broadcast: prefs.channelMentions ?? true,
     reply: prefs.replies ?? true,

@@ -785,6 +785,7 @@ export function Sidebar({
             {canBrowseSpace ? (
               <SideItem icon="hard-drive" label={t("sidebar.spaceFiles")} active={view === "files"} onClick={() => onView("files")} />
             ) : null}
+            <SideItem icon="calendar" label={t("calendar.title")} active={view === "calendar"} onClick={() => onView("calendar")} />
             <SideItem icon="bookmark" label={t("activity.saved")} active={view === "saved"} onClick={() => onView("saved")} />
           </>
         ) : null}

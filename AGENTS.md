@@ -65,6 +65,12 @@ Web interface only for now. The core is open source under **AGPLv3**.
   `docs/office-editing.md` and ADR 0003. New crates: `hyper-util` and `http-body-util` (hyperium,
   community-governed, already in the tree through axum) and `tokio-tungstenite` (Snapview GmbH,
   Germany).
+- **Calendar:** recurring events are stored as an RFC 5545 rule plus its exceptions and unfolded on
+  demand (`apps/api/src/calendar/`). Crates: `rrule` (community project of an independent
+  maintainer, Fredrik Meringdal; MIT/Apache-2.0), `icalendar` (Hendrik Sollich, Dresden, Germany;
+  MIT/Apache-2.0; its `parser` feature brings `nom-language`, by `nom`'s author Geoffroy Couprie,
+  France, MIT), `chrono` and `chrono-tz` (community chronotope project; MIT/Apache-2.0). `chrono` is
+  what `rrule` speaks and does not leave the calendar module: the rest of the API uses `time`.
 - **Containerization:** Docker + `docker compose` (all-in-one deployment).
 
 ## Pinned versions
@@ -221,7 +227,9 @@ terminates TLS for that instance, rather than exposing its port:
   transaction and pushed over the hub to open pages; for everyone else there is content-free Web
   Push to subscribed browsers (ADR 0001) and an unread digest by email through the instance's own
   relay. The preferences they obey are held server-side, and the server rule (`notify::prefs::allows`)
-  mirrors the inbox rule (`passesPref` in the web client): change one, change the other.
+  mirrors the inbox rule (`passesPref` in the web client): change one, change the other. Calendar
+  reminders are a notification kind of their own (`calendar_reminder`, about an event occurrence
+  rather than a message), with their own switches and their own immediate mail (`docs/calendar.md`).
 
 ### Office editing gotchas
 

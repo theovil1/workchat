@@ -6,6 +6,7 @@ import { isLocale, type Locale } from "@/lib/i18n/config";
 import { initialLocale, startI18n } from "@/lib/i18n";
 import { setCurrentLocale } from "@/lib/i18n/current";
 import { DEFAULT_BINDINGS, mergeBindings, type Bindings } from "./shortcuts";
+import { calendarPrefs, DEFAULT_CALENDAR_PREFS, type CalendarPrefs } from "@/features/calendar/prefs";
 
 /** The accent a theme paints with: one of the design system's pastels. */
 export type ThemeAccent = "sky" | "mint" | "violet" | "pink";
@@ -146,6 +147,8 @@ export type Settings = {
   emojiPack: boolean;
   /** Global notification preferences (master switch, sound, quiet hours, @channel). */
   notif: NotifPrefs;
+  /** How the calendar reads: its first view, week, clock, working day, a new event's length. */
+  calendar: CalendarPrefs;
   /** Personal account security (two-factor, passkeys, recovery codes). */
   /** Customizable keyboard shortcut bindings, keyed by command id. */
   shortcuts: Bindings;
@@ -213,6 +216,7 @@ const DEFAULTS: Settings = {
   emojiAnimated: true,
   emojiPack: true,
   notif: DEFAULT_NOTIF_PREFS,
+  calendar: DEFAULT_CALENDAR_PREFS,
   shortcuts: DEFAULT_BINDINGS,
   welcome: DEFAULT_WELCOME,
   spaceOrder: [],
@@ -281,6 +285,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           defaultPanel: isDefaultPanel(parsed.defaultPanel) ? parsed.defaultPanel : DEFAULTS.defaultPanel,
           // Deep-merge notif so a stored object missing newer keys still gets their defaults.
           notif: { ...DEFAULT_NOTIF_PREFS, ...(parsed.notif ?? {}) },
+          calendar: calendarPrefs(parsed.calendar),
           // Keep only known commands and string bindings; unknown/missing ones fall back to default.
           shortcuts: mergeBindings(parsed.shortcuts),
           locale: isLocale(parsed.locale) ? parsed.locale : null,

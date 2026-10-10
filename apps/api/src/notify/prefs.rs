@@ -86,6 +86,10 @@ pub struct NotificationPrefs {
     pub email_replies: bool,
     pub email_direct_messages: bool,
     pub email_messages: bool,
+    /// Calendar reminders, in the app and by push, then by mail. Their own switches: a reminder is
+    /// asked for, not something that happened in a conversation.
+    pub calendar_reminders: bool,
+    pub email_calendar_reminders: bool,
 }
 
 /// Where a notification would go: the app and push, or the email digest. Each person chooses, per
@@ -116,6 +120,8 @@ impl Default for NotificationPrefs {
             email_replies: true,
             email_direct_messages: true,
             email_messages: false,
+            calendar_reminders: true,
+            email_calendar_reminders: true,
         }
     }
 }
@@ -218,6 +224,10 @@ pub fn allows(
     if !prefs.enabled {
         return false;
     }
+    // A reminder belongs to no conversation: its own switches decide.
+    if kind == "calendar_reminder" {
+        return allows_reminder(prefs, delivery);
+    }
     let fallback = Scope::default();
     let scope = scope.unwrap_or(&fallback);
     if scope.conversation.muted {
@@ -254,6 +264,17 @@ pub fn allows(
         return matches!(kind, "mention" | "broadcast" | "dm");
     }
     true
+}
+
+/// Whether a calendar reminder reaches someone by `delivery`. Quiet hours decide when, not whether,
+/// as for every other kind.
+pub fn allows_reminder(prefs: &NotificationPrefs, delivery: Delivery) -> bool {
+    prefs.enabled
+        && match delivery {
+            Delivery::App => prefs.calendar_reminders,
+            // The mail column's master switch holds them as it holds every other kind.
+            Delivery::Email => prefs.email && prefs.email_calendar_reminders,
+        }
 }
 
 /// Whether someone wants a notification for every message of a conversation: its level (or its
@@ -809,5 +830,30 @@ mod tests {
         assert!(quiet("21:00", "8h", 0).validate().is_err());
         assert!(quiet("21:00", "08:00", 15 * 60).validate().is_err());
         assert!(quiet("21:00", "08:00", -120).validate().is_ok());
+    }
+
+    #[test]
+    fn calendar_reminders_have_their_own_switches() {
+        let mut prefs = NotificationPrefs::default();
+        assert!(allows_reminder(&prefs, Delivery::App));
+        assert!(allows_reminder(&prefs, Delivery::Email));
+        // `allows` agrees for the kind, whatever the conversation scope says.
+        assert!(allows("calendar_reminder", &prefs, None, Delivery::App));
+        prefs.email_calendar_reminders = false;
+        assert!(allows_reminder(&prefs, Delivery::App));
+        assert!(!allows_reminder(&prefs, Delivery::Email));
+        // The mail column's master switch holds reminders too, as the preferences screen shows it.
+        prefs.email_calendar_reminders = true;
+        prefs.email = false;
+        assert!(!allows_reminder(&prefs, Delivery::Email));
+        prefs.email = true;
+        prefs.calendar_reminders = false;
+        assert!(!allows("calendar_reminder", &prefs, None, Delivery::App));
+        prefs.calendar_reminders = true;
+        prefs.enabled = false;
+        assert!(!allows_reminder(&prefs, Delivery::App));
+        // A document saved before the switches existed reads them as on.
+        let old: NotificationPrefs = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(old.calendar_reminders && old.email_calendar_reminders);
     }
 }

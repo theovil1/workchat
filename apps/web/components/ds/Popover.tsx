@@ -108,6 +108,9 @@ export function Popover<T extends HTMLElement = HTMLElement>({
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (contentRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
+      // A popover opened from this one (a picker inside a bubble) is portaled apart from it: a click
+      // in there is not a click outside.
+      if (t instanceof Element && t.closest(".wc-pop")) return;
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -133,7 +136,9 @@ export function Popover<T extends HTMLElement = HTMLElement>({
         position: "fixed",
         top: pos?.top ?? 0,
         left: pos?.left ?? 0,
-        zIndex: 80,
+        // Above a dialog's scrim (90): a popover is always opened from the topmost layer, which may be a
+        // dialog.
+        zIndex: 95,
         visibility: pos ? "visible" : "hidden",
         // @ts-expect-error CSS custom property
         "--wc-pop-origin": origin,

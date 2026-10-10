@@ -9,6 +9,7 @@ mod admin;
 mod auth;
 mod bootstrap;
 mod cache;
+mod calendar;
 mod config;
 mod db;
 mod entities;
@@ -276,6 +277,8 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     notify::email::spawn(state.clone());
     // The trash lets go of what has been in it past the retention: a sweep an hour.
     files::trash::spawn(state.clone());
+    // Calendar reminders, every minute.
+    calendar::reminders::spawn(state.clone());
     // Who is editing what: a tab that died without a goodbye leaves the file lists by itself.
     if state.office.is_some() {
         office::presence::spawn_sweep(state.clone());

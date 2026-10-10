@@ -277,9 +277,17 @@ pub struct PendingQuery {
 pub struct PushItemDto {
     pub id: Uuid,
     pub kind: String,
-    pub space_id: Uuid,
-    pub conversation_id: Uuid,
-    pub message_id: Uuid,
+    /// Absent for a reminder from a personal calendar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<Uuid>,
+    /// A message notification's conversation and message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<Uuid>,
+    /// A reminder's event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<Uuid>,
     pub title: String,
     pub body: String,
     /// RFC 3339.
@@ -365,7 +373,7 @@ pub async fn pending(
         .unwrap_or(None);
 
     let user_prefs = prefs::load(&state.db, session.user_id).await?;
-    let conversation_ids: Vec<Uuid> = rows.iter().map(|row| row.conversation_id).collect();
+    let conversation_ids: Vec<Uuid> = rows.iter().filter_map(|row| row.conversation_id).collect();
     let conversation_prefs = prefs::scopes(&state.db, session.user_id, &conversation_ids).await?;
     let shown: Vec<notifications::Model> = rows
         .into_iter()
@@ -373,26 +381,31 @@ pub async fn pending(
             prefs::allows(
                 &row.kind,
                 &user_prefs,
-                conversation_prefs.get(&row.conversation_id),
+                row.conversation_id
+                    .and_then(|id| conversation_prefs.get(&id)),
                 prefs::Delivery::App,
             )
         })
         .take(PENDING_LIMIT)
         .collect();
 
-    let locale = users::Entity::find_by_id(session.user_id)
+    let reader = users::Entity::find_by_id(session.user_id)
         .one(&state.db)
-        .await?
+        .await?;
+    let locale = reader
+        .as_ref()
         .map(|user| Locale::parse(user.locale.as_deref()))
         .unwrap_or_default();
+    let zone = crate::calendar::reminders::reader_time_zone(reader.as_ref());
     let mut items: Vec<PushItemDto> = Vec::new();
     if test.is_some() {
         items.push(PushItemDto {
             id: Uuid::nil(),
             kind: "test".to_owned(),
-            space_id: Uuid::nil(),
-            conversation_id: Uuid::nil(),
-            message_id: Uuid::nil(),
+            space_id: None,
+            conversation_id: None,
+            message_id: None,
+            event_id: None,
             title: "Ruchoir".to_owned(),
             body: mail_text::push_test_body(locale).to_owned(),
             created_at: crate::messaging::dto::rfc3339(now),
@@ -402,13 +415,19 @@ pub async fn pending(
         .await?
         .into_iter()
         .map(|dto| {
-            let (title, body) = tray_text(locale, &dto);
+            let (title, body) = if dto.kind == "calendar_reminder" {
+                let texts = crate::calendar::reminders::texts(locale, &dto, now, &zone);
+                (texts.title, texts.body)
+            } else {
+                tray_text(locale, &dto)
+            };
             PushItemDto {
                 id: dto.id,
                 kind: dto.kind,
                 space_id: dto.space_id,
                 conversation_id: dto.conversation_id,
                 message_id: dto.message_id,
+                event_id: dto.event_id,
                 title,
                 body,
                 created_at: dto.created_at,
@@ -467,7 +486,8 @@ async fn deliver(state: &AppState, rows: Vec<notifications::Model>) -> Result<()
         if !prefs::may_interrupt(&user_prefs, user.manual_presence.as_deref(), now) {
             continue;
         }
-        let conversation_ids: Vec<Uuid> = rows.iter().map(|row| row.conversation_id).collect();
+        let conversation_ids: Vec<Uuid> =
+            rows.iter().filter_map(|row| row.conversation_id).collect();
         let conversation_prefs = prefs::scopes(&state.db, user_id, &conversation_ids).await?;
         let allowed: Vec<&notifications::Model> = rows
             .iter()
@@ -475,7 +495,8 @@ async fn deliver(state: &AppState, rows: Vec<notifications::Model>) -> Result<()
                 prefs::allows(
                     &row.kind,
                     &user_prefs,
-                    conversation_prefs.get(&row.conversation_id),
+                    row.conversation_id
+                        .and_then(|id| conversation_prefs.get(&id)),
                     prefs::Delivery::App,
                 )
             })
@@ -483,11 +504,11 @@ async fn deliver(state: &AppState, rows: Vec<notifications::Model>) -> Result<()
         if allowed.is_empty() {
             continue;
         }
-        // Being named or written to directly is worth waking a phone for; the rest can wait for
-        // the device's next scheduled check.
+        // Being named, written to directly or reminded of an event is worth waking a phone for; the
+        // rest can wait for the device's next scheduled check.
         let urgency = if allowed
             .iter()
-            .any(|row| matches!(row.kind.as_str(), "mention" | "dm"))
+            .any(|row| matches!(row.kind.as_str(), "mention" | "dm" | "calendar_reminder"))
         {
             "high"
         } else {

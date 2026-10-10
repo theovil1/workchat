@@ -48,11 +48,29 @@ import {
   type ShortcutId,
 } from "./shortcuts";
 import type { Toast } from "./types";
+import { currentLocale } from "@/lib/i18n/current";
+import {
+  type CalendarPrefs,
+  type ClockFormat,
+  DESKTOP_VIEWS,
+  type DesktopView,
+  DURATIONS,
+  PHONE_VIEWS,
+  type PhoneView,
+  WEEK_STARTS,
+  type WeekStart,
+} from "@/features/calendar/prefs";
 
-export type PrefTab = "appearance" | "notifications" | "shortcuts" | "security" | "emojis";
+/** The first letter in capitals, as a list of choices writes it: "Lundi". */
+function capitalize(text: string, locale: string): string {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
+export type PrefTab = "appearance" | "calendar" | "notifications" | "shortcuts" | "security" | "emojis";
 
 const NAV: [PrefTab, TranslationKey, IconName][] = [
   ["appearance", key("prefs.appearance"), "layout-grid"],
+  ["calendar", key("calendar.title"), "calendar"],
   ["notifications", key("notif.title"), "bell"],
   ["shortcuts", key("prefs.shortcuts"), "keyboard"],
   ["security", key("prefs.security"), "shield"],
@@ -270,6 +288,7 @@ const KINDS: {
   { label: key("notif.kindReplies"), desc: key("notif.kindRepliesDesc"), app: "replies", email: "emailReplies" },
   { label: key("sidebar.directMessages"), desc: key("notif.kindDmsDesc"), app: "directMessages", email: "emailDirectMessages" },
   { label: key("notif.kindMessages"), desc: key("notif.kindMessagesDesc"), app: "messages", email: "emailMessages" },
+  { label: key("notif.kindReminders"), desc: key("notif.kindRemindersDesc"), app: "calendarReminders", email: "emailCalendarReminders" },
 ];
 
 /**
@@ -685,6 +704,130 @@ function ShortcutRow({
   );
 }
 
+/**
+ * The calendar's own preferences: the view it opens on (one for a desktop, one for a phone, which
+ * has no week view), the week, the clock, the working day and how long a new event lasts. Kept on
+ * the device with the rest of the preferences.
+ */
+function CalendarSection() {
+  const { t } = useTranslation();
+  const s = useSettings();
+  const c = s.calendar;
+  const set = (patch: Partial<CalendarPrefs>) => s.set("calendar", { ...c, ...patch });
+  const locale = currentLocale();
+  // Examples drawn by the clock itself, so each choice shows what it looks like.
+  const sample = (cycle?: "h23" | "h12", hour = 14, minute = 30) =>
+    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: "UTC", ...(cycle ? { hourCycle: cycle } : {}) }).format(
+      new Date(Date.UTC(2026, 0, 1, hour, minute)),
+    );
+  const cycle = c.clock === "24" ? "h23" : c.clock === "12" ? "h12" : undefined;
+  const hours = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i).map((h) => ({ value: String(h), label: h === 24 ? sample(cycle, 23, 59) : sample(cycle, h, 0) }));
+  const weekday = (day: number) =>
+    capitalize(new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 9, 18 + day, 12))), locale);
+  const durationLabel = (minutes: number) =>
+    minutes < 60
+      ? t("calendar.prefs.durationMinutes", { count: minutes })
+      : minutes % 60 === 0
+        ? t("calendar.prefs.durationHours", { count: minutes / 60 })
+        : t("calendar.prefs.durationHoursMinutes", { h: Math.floor(minutes / 60), m: minutes % 60 });
+
+  return (
+    <>
+      <h2 style={st.h}>{t("calendar.title")}</h2>
+      <p style={st.sub}>{t("calendar.prefs.sub")}</p>
+
+      <div style={st.sect} className="wc-sect">{t("prefs.defaultDisplay")}</div>
+      <Row title={t("calendar.prefs.viewDesktop")}>
+        <Select
+          aria-label={t("calendar.prefs.viewDesktop")}
+          value={c.viewDesktop}
+          onChange={(e) => set({ viewDesktop: e.target.value as DesktopView })}
+          options={DESKTOP_VIEWS.map((v) => ({ value: v, label: t(`calendar.view.${v}`) }))}
+        />
+      </Row>
+      <Row title={t("calendar.prefs.viewPhone")}>
+        <Select
+          aria-label={t("calendar.prefs.viewPhone")}
+          value={c.viewPhone}
+          onChange={(e) => set({ viewPhone: e.target.value as PhoneView })}
+          options={PHONE_VIEWS.map((v) => ({ value: v, label: t(`calendar.view.${v}`) }))}
+        />
+      </Row>
+
+      <div style={st.sect} className="wc-sect">{t("calendar.prefs.weekAndTime")}</div>
+      <Row title={t("calendar.prefs.weekStart")}>
+        <Select
+          aria-label={t("calendar.prefs.weekStart")}
+          value={String(c.weekStart)}
+          onChange={(e) => set({ weekStart: Number(e.target.value) as WeekStart })}
+          options={WEEK_STARTS.map((d) => ({ value: String(d), label: weekday(d) }))}
+        />
+      </Row>
+      <Row title={t("calendar.prefs.clock")}>
+        <Select
+          aria-label={t("calendar.prefs.clock")}
+          value={c.clock}
+          onChange={(e) => set({ clock: e.target.value as ClockFormat })}
+          options={[
+            { value: "auto", label: `${t("calendar.prefs.clockAuto")} (${sample()})` },
+            { value: "24", label: `${t("calendar.prefs.clock24")} (${sample("h23")})` },
+            { value: "12", label: `${t("calendar.prefs.clock12")} (${sample("h12")})` },
+          ]}
+        />
+      </Row>
+      <Row title={t("calendar.prefs.weekends")} desc={t("calendar.prefs.weekendsDesc")}>
+        <Switch checked={c.weekends} onChange={(e) => set({ weekends: e.target.checked })} aria-label={t("calendar.prefs.weekends")} />
+      </Row>
+      <Row title={t("calendar.prefs.weekNumbers")} desc={t("calendar.prefs.weekNumbersDesc")}>
+        <Switch checked={c.weekNumbers} onChange={(e) => set({ weekNumbers: e.target.checked })} aria-label={t("calendar.prefs.weekNumbers")} />
+      </Row>
+
+      <div style={st.sect} className="wc-sect">{t("calendar.prefs.workday")}</div>
+      <Row title={t("calendar.prefs.openAt")} desc={t("calendar.prefs.openAtDesc")}>
+        <Select aria-label={t("calendar.prefs.openAt")} value={String(c.openAt)} onChange={(e) => set({ openAt: Number(e.target.value) })} options={hours(0, 23)} />
+      </Row>
+      <Row title={t("calendar.prefs.workHours")} desc={t("calendar.prefs.workHoursDesc")}>
+        <Switch checked={c.workHours} onChange={(e) => set({ workHours: e.target.checked })} aria-label={t("calendar.prefs.workHours")} />
+      </Row>
+      {c.workHours ? (
+        <Row title={t("calendar.prefs.workRange")}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <Select
+              aria-label={t("prefs.from")}
+              value={String(c.workStart)}
+              onChange={(e) => {
+                const start = Number(e.target.value);
+                set({ workStart: start, workEnd: Math.max(c.workEnd, start + 1) });
+              }}
+              options={hours(0, 23)}
+            />
+            <Icon name="arrow-right" size={14} />
+            <Select
+              aria-label={t("prefs.to")}
+              value={String(c.workEnd)}
+              onChange={(e) => {
+                const end = Number(e.target.value);
+                set({ workEnd: end, workStart: Math.min(c.workStart, end - 1) });
+              }}
+              options={hours(1, 24)}
+            />
+          </div>
+        </Row>
+      ) : null}
+
+      <div style={st.sect} className="wc-sect">{t("calendar.prefs.newEvents")}</div>
+      <Row title={t("calendar.prefs.duration")}>
+        <Select
+          aria-label={t("calendar.prefs.duration")}
+          value={String(c.duration)}
+          onChange={(e) => set({ duration: Number(e.target.value) })}
+          options={DURATIONS.map((d) => ({ value: String(d), label: durationLabel(d) }))}
+        />
+      </Row>
+    </>
+  );
+}
+
 /** The "Raccourcis clavier" preferences panel: view, rebind, unbind and reset each command. */
 function ShortcutsSection({ onNotify }: { onNotify?: (t: Toast) => void }) {
   const { t } = useTranslation();
@@ -967,6 +1110,8 @@ export function PreferencesScreen({
 
               </>
             ) : null}
+
+            {tab === "calendar" ? <CalendarSection /> : null}
 
             {tab === "shortcuts" ? <ShortcutsSection onNotify={onNotify} /> : null}
 

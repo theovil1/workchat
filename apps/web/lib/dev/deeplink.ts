@@ -18,7 +18,7 @@
  */
 
 const STAGES = ["login", "signup", "mfa", "forgot", "reset", "verify", "invite", "onboarding", "app"] as const;
-const VIEWS = ["channel", "files", "settings", "prefs", "threads", "mentions", "saved"] as const;
+const VIEWS = ["channel", "files", "calendar", "settings", "prefs", "threads", "mentions", "saved"] as const;
 const PANELS = ["files", "members", "pinned", "search"] as const;
 const MODALS = [
   "newChannel",
@@ -32,7 +32,7 @@ const MODALS = [
 const TEXT_SIZES = ["s", "m", "l", "xl"] as const;
 const FONTS = ["plex", "system", "dyslexic"] as const;
 const POPOVERS = ["notifications"] as const;
-const PREF_TABS = ["appearance", "notifications", "shortcuts", "security", "emojis"] as const;
+const PREF_TABS = ["appearance", "calendar", "notifications", "shortcuts", "security", "emojis"] as const;
 
 export type DeepLink = {
   stage?: (typeof STAGES)[number];

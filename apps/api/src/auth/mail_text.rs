@@ -802,6 +802,156 @@ pub async fn send_previews(config: &crate::config::Config, to: &str) -> Result<(
     Ok(())
 }
 
+/// A local date as people write it, short: `26/10` in French, `10/26` in English.
+pub fn short_date(locale: Locale, date: time::Date) -> String {
+    let (day, month) = (date.day(), u8::from(date.month()));
+    match locale {
+        Locale::En => format!("{month}/{day}"),
+        Locale::De | Locale::Pl => format!("{day:02}.{month:02}."),
+        Locale::Fr | Locale::Es | Locale::It => format!("{day:02}/{month:02}"),
+    }
+}
+
+/// How soon a reminded event starts, as a reminder's first words: "In 10 min", "Tomorrow".
+///
+/// `minutes` is how long until it starts (a timed event); `day` tells an all-day event happening
+/// today from one happening tomorrow.
+pub fn reminder_lead(locale: Locale, minutes: i64, day: ReminderDay) -> String {
+    let hours = (minutes + 30) / 60;
+    match (locale, day) {
+        (Locale::Fr, ReminderDay::Today) => "Aujourd'hui".to_owned(),
+        (Locale::Fr, ReminderDay::Tomorrow) => "Demain".to_owned(),
+        (Locale::En, ReminderDay::Today) => "Today".to_owned(),
+        (Locale::En, ReminderDay::Tomorrow) => "Tomorrow".to_owned(),
+        (Locale::Es, ReminderDay::Today) => "Hoy".to_owned(),
+        (Locale::Es, ReminderDay::Tomorrow) => "Mañana".to_owned(),
+        (Locale::De, ReminderDay::Today) => "Heute".to_owned(),
+        (Locale::De, ReminderDay::Tomorrow) => "Morgen".to_owned(),
+        (Locale::It, ReminderDay::Today) => "Oggi".to_owned(),
+        (Locale::It, ReminderDay::Tomorrow) => "Domani".to_owned(),
+        (Locale::Pl, ReminderDay::Today) => "Dziś".to_owned(),
+        (Locale::Pl, ReminderDay::Tomorrow) => "Jutro".to_owned(),
+        (_, ReminderDay::Timed) if minutes >= 1440 => {
+            reminder_lead(locale, 0, ReminderDay::Tomorrow)
+        }
+        (Locale::Fr, ReminderDay::Timed) if minutes <= 0 => "Maintenant".to_owned(),
+        (Locale::Fr, ReminderDay::Timed) if minutes < 60 => format!("Dans {minutes}\u{a0}min"),
+        (Locale::Fr, ReminderDay::Timed) => format!("Dans {hours}\u{a0}h"),
+        (Locale::En, ReminderDay::Timed) if minutes <= 0 => "Now".to_owned(),
+        (Locale::En, ReminderDay::Timed) if minutes < 60 => format!("In {minutes} min"),
+        (Locale::En, ReminderDay::Timed) => format!("In {hours} h"),
+        (Locale::Es, ReminderDay::Timed) if minutes <= 0 => "Ahora".to_owned(),
+        (Locale::Es, ReminderDay::Timed) if minutes < 60 => format!("En {minutes} min"),
+        (Locale::Es, ReminderDay::Timed) => format!("En {hours} h"),
+        (Locale::De, ReminderDay::Timed) if minutes <= 0 => "Jetzt".to_owned(),
+        (Locale::De, ReminderDay::Timed) if minutes < 60 => format!("In {minutes} Min."),
+        (Locale::De, ReminderDay::Timed) => format!("In {hours} Std."),
+        (Locale::It, ReminderDay::Timed) if minutes <= 0 => "Ora".to_owned(),
+        (Locale::It, ReminderDay::Timed) if minutes < 60 => format!("Tra {minutes} min"),
+        (Locale::It, ReminderDay::Timed) => format!("Tra {hours} h"),
+        (Locale::Pl, ReminderDay::Timed) if minutes <= 0 => "Teraz".to_owned(),
+        (Locale::Pl, ReminderDay::Timed) if minutes < 60 => format!("Za {minutes} min"),
+        (Locale::Pl, ReminderDay::Timed) => format!("Za {hours} godz."),
+    }
+}
+
+/// What kind of moment a reminder announces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReminderDay {
+    Timed,
+    Today,
+    Tomorrow,
+}
+
+/// A reminder's title line: "Dans 10 min : Point équipe", with the French space before the colon.
+pub fn reminder_title(locale: Locale, lead: &str, title: &str) -> String {
+    match locale {
+        Locale::Fr => format!("{lead}\u{a0}: {title}"),
+        _ => format!("{lead}: {title}"),
+    }
+}
+
+/// A calendar reminder by mail, for someone who has no Ruchoir open.
+///
+/// `when` is the occurrence's local date and time as the reader writes them, `lead` how soon it
+/// is ("Dans 10 min").
+pub fn calendar_reminder(
+    locale: Locale,
+    lead: &str,
+    title: &str,
+    when: &str,
+    location: Option<&str>,
+    link: &str,
+    instance: &str,
+) -> Email {
+    let link = link.to_owned();
+    let place = location.map(|l| format!(" · {l}")).unwrap_or_default();
+    let subject = reminder_title(locale, lead, title);
+    let content = match locale {
+        Locale::Fr => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Ouvrir le calendrier".to_owned(),
+            link,
+            note: "Vous recevez cet e-mail parce que vous avez un rappel pour cet événement et que Ruchoir n'était ouvert nulle part. Pour ne plus en recevoir, désactivez «\u{a0}Rappels d'agenda\u{a0}» par e-mail dans Préférences > Notifications.".to_owned(),
+            items: Vec::new(),
+        },
+        Locale::En => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Open the calendar".to_owned(),
+            link,
+            note: "You are receiving this email because you have a reminder for this event and Ruchoir was not open anywhere. To stop them, turn off \u{201c}Calendar reminders\u{201d} by email in Preferences > Notifications.".to_owned(),
+            items: Vec::new(),
+        },
+        Locale::Es => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Abrir el calendario".to_owned(),
+            link,
+            note: "Recibes este correo porque tienes un recordatorio para este evento y Ruchoir no estaba abierto en ningún sitio. Para dejar de recibirlos, desactiva «Recordatorios de agenda» por correo en Preferencias > Notificaciones.".to_owned(),
+            items: Vec::new(),
+        },
+        Locale::De => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Kalender öffnen".to_owned(),
+            link,
+            note: "Sie erhalten diese E-Mail, weil Sie eine Erinnerung für diesen Termin haben und Ruchoir nirgends geöffnet war. Um keine mehr zu erhalten, deaktivieren Sie \u{201e}Kalendererinnerungen\u{201c} per E-Mail unter Einstellungen > Benachrichtigungen.".to_owned(),
+            items: Vec::new(),
+        },
+        Locale::It => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Apri il calendario".to_owned(),
+            link,
+            note: "Ricevi questa e-mail perché hai un promemoria per questo evento e Ruchoir non era aperto da nessuna parte. Per non riceverne più, disattiva «Promemoria del calendario» via e-mail in Preferenze > Notifiche.".to_owned(),
+            items: Vec::new(),
+        },
+        Locale::Pl => Content {
+            subject,
+            preheader: format!("{when}{place}"),
+            heading: title.to_owned(),
+            paragraph: format!("{lead}, {when}{place}."),
+            button: "Otwórz kalendarz".to_owned(),
+            link,
+            note: "Otrzymujesz tę wiadomość, ponieważ masz przypomnienie o tym wydarzeniu, a Ruchoir nie był nigdzie otwarty. Aby ich nie otrzymywać, wyłącz e-mailowe „Przypomnienia z kalendarza” w Preferencje > Powiadomienia.".to_owned(),
+            items: Vec::new(),
+        },
+    };
+    render(locale, &content, instance)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -912,5 +1062,53 @@ mod tests {
         assert!(email.html.contains("&lt;script&gt;"));
         assert!(email.html.contains("Eve &amp; &quot;Co&quot;"));
         assert!(email.html.contains("a=1&amp;b=2"));
+    }
+
+    #[test]
+    fn a_reminder_says_how_soon_in_the_readers_language() {
+        assert_eq!(
+            reminder_lead(Locale::Fr, 10, ReminderDay::Timed),
+            "Dans 10\u{a0}min"
+        );
+        assert_eq!(
+            reminder_lead(Locale::Fr, 0, ReminderDay::Timed),
+            "Maintenant"
+        );
+        assert_eq!(
+            reminder_lead(Locale::Fr, 60, ReminderDay::Timed),
+            "Dans 1\u{a0}h"
+        );
+        assert_eq!(
+            reminder_lead(Locale::Fr, 1440, ReminderDay::Timed),
+            "Demain"
+        );
+        assert_eq!(
+            reminder_lead(Locale::En, 30, ReminderDay::Timed),
+            "In 30 min"
+        );
+        assert_eq!(
+            reminder_lead(Locale::Pl, 120, ReminderDay::Timed),
+            "Za 2 godz."
+        );
+        assert_eq!(reminder_lead(Locale::De, 0, ReminderDay::Today), "Heute");
+        assert_eq!(
+            reminder_title(Locale::Fr, "Dans 10\u{a0}min", "Point"),
+            "Dans 10\u{a0}min\u{a0}: Point"
+        );
+        let date = time::Date::from_calendar_date(2026, time::Month::October, 7).unwrap();
+        assert_eq!(short_date(Locale::Fr, date), "07/10");
+        assert_eq!(short_date(Locale::En, date), "10/7");
+        assert_eq!(short_date(Locale::De, date), "07.10.");
+        let mail = calendar_reminder(
+            Locale::Fr,
+            "Dans 10\u{a0}min",
+            "Point équipe",
+            "07/10 09:00",
+            Some("Salle Ouest"),
+            "https://ruchoir.example",
+            "ruchoir.example",
+        );
+        assert_eq!(mail.subject, "Dans 10\u{a0}min\u{a0}: Point équipe");
+        assert!(mail.text.contains("07/10 09:00 · Salle Ouest"));
     }
 }

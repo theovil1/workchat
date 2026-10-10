@@ -24,6 +24,15 @@ pub mod file_stars;
 pub mod file_versions;
 pub mod files;
 
+// The calendar.
+pub mod calendar_event_exceptions;
+pub mod calendar_event_reminders;
+pub mod calendar_events;
+pub mod calendar_feed_tokens;
+pub mod calendar_reminder_prefs;
+pub mod calendar_visibility;
+pub mod calendars;
+
 // Messaging.
 pub mod channel_pins;
 pub mod channel_role_access;

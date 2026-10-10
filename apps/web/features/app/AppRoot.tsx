@@ -63,6 +63,7 @@ import {
   setMyPresence as apiSetMyPresence,
   setReadCursor,
   type ApiNotification,
+  type ReminderInfo,
   type Member,
   type MfaMethod,
   type RealtimeConnection,
@@ -78,6 +79,9 @@ import { apiErrorCode, isApiError } from "@/lib/data/http";
 import { clearAuthLink, forgetInvite, readAuthLink, readRememberedInvite, rememberInvite } from "@/lib/authLink";
 import { fileUrl, readSpaceLocation, writeSpaceLocation } from "@/lib/spaceUrl";
 import { OfficeEditor } from "@/features/office/OfficeEditor";
+import { CalendarScreen } from "@/features/calendar/CalendarScreen";
+import { emitCalendarChanged } from "@/lib/calendarEvents";
+import { formatDate, formatTime } from "@/lib/i18n/format";
 import { emitFileEvent } from "@/lib/fileEvents";
 import type {
   Channel,
@@ -351,6 +355,7 @@ function toAppNotification(
     preview: oneLine(n.preview),
     createdAt: n.createdAt,
     read,
+    reminder: n.reminder,
   };
 }
 
@@ -419,6 +424,7 @@ function authMessage(err: unknown, fallbackKey: TranslationKey): TranslationKey 
 /** Screen names, for the tab title and the compact top bar. Conversations name themselves. */
 const VIEW_TITLES: Record<string, TranslationKey> = {
   files: key("sidebar.spaceFiles"),
+  calendar: key("calendar.title"),
   settings: key("sidebar.spaceSettings"),
   prefs: key("prefs.title"),
   "instance-admin": key("admin.screenTitle"),
@@ -535,6 +541,8 @@ function AppShell() {
   // A notification clicked in the system tray, waiting for its space and conversation to be loaded
   // before it can be opened (see the effect that consumes it).
   const [pendingOpen, setPendingOpen] = useState<PushTarget | null>(null);
+  // The event a clicked reminder points at: the calendar opens on its day, with its details.
+  const [calendarFocus, setCalendarFocus] = useState<(ReminderInfo & { at: number }) | null>(null);
   // The notification level of the space on screen, being set.
   const [spaceNotifOpen, setSpaceNotifOpen] = useState(false);
   // A link to another site, held until the warning about leaving Ruchoir is answered.
@@ -633,7 +641,7 @@ function AppShell() {
   const compact = layout === "phone";
   const touch = useTouch();
   const tablet = layout === "tablet";
-  const [mobileTab, setMobileTab] = useState<"home" | "messages" | "activity">("home");
+  const [mobileTab, setMobileTab] = useState<"home" | "messages" | "calendar" | "activity">("home");
   const [mobileContent, setMobileContent] = useState(false);
   const profileFromTabs = useRef(false);
   const [spaceSheet, setSpaceSheet] = useState(false);
@@ -1449,6 +1457,7 @@ function AppShell() {
           preview: n.preview,
           createdAt: n.createdAt,
           read: n.read || viewing,
+          reminder: n.reminder,
         };
         setNotifs((prev) => [notif, ...prev.filter((x) => x.id !== n.id)]);
         if (viewing) {
@@ -1467,6 +1476,7 @@ function AppShell() {
       onFilesUpdated: (spaceId, file, conversationId) =>
         emitFileEvent({ type: "updated", spaceId, file, conversationId }),
       onFilesEditing: (spaceId, fileId, editors) => emitFileEvent({ type: "editing", spaceId, fileId, editors }),
+      onCalendarChanged: (calendarId) => emitCalendarChanged(calendarId),
       onFilesDeleted: (spaceId, fileIds) => {
         if (fileIds.length === 0) return;
         emitFileEvent({ type: "deleted", spaceId, fileIds });
@@ -1825,7 +1835,8 @@ function AppShell() {
     () =>
       notifs.filter(
         (n) =>
-          n.spaceId === ws &&
+          // A reminder from a personal calendar belongs to no space: every space shows it.
+          (n.spaceId === ws || (n.kind === "calendar_reminder" && !n.spaceId)) &&
           passesPref(n, channelPrefs[n.channelId], settings.notif, wsNotifyLevel),
       ),
     [notifs, ws, channelPrefs, settings.notif, wsNotifyLevel],
@@ -2560,6 +2571,18 @@ function AppShell() {
   /** Open a notification: mark it read, then jump to its source message. */
   const openNotification = (targetChannel: string, messageId: string, id: string) => {
     setNotifRead(id, true);
+    // A calendar reminder has no conversation: it opens its event in the calendar.
+    if (!targetChannel) {
+      const reminder = notifs.find((n) => n.id === id)?.reminder;
+      if (reminder) setCalendarFocus({ ...reminder, at: Date.now() });
+      if (compact) {
+        setMobileContent(false);
+        setMobileTab("calendar");
+      } else {
+        setView("calendar");
+      }
+      return;
+    }
     openMessage(targetChannel, messageId);
   };
 
@@ -2590,6 +2613,16 @@ function AppShell() {
       // does so whether or not this tab is open). Drawing it here too would show it twice.
       if (appIsAway() && pushActive()) return;
       if (settings.notif.sound) playNotificationSound();
+      if (n.reminder) {
+        const title = notifSummary(n, t);
+        const body = `${n.reminder.allDay ? formatDate(`${n.reminder.start}T12:00:00Z`) : formatTime(n.reminder.start)}${n.reminder.location ? ` · ${n.reminder.location}` : ""}`;
+        if (appIsAway()) {
+          showDesktopNotification({ title, body, tag: n.reminder.eventId, onClick: () => openNotification("", "", n.id) });
+          return;
+        }
+        notifyRef.current?.({ tone: "info", title, description: body });
+        return;
+      }
       const where = n.spaceId === liveRef.current.ws ? n.label : `${n.label} · ${n.spaceName}`;
       const who = n.isDm && !n.label ? n.actor : `${n.actor} dans ${where}`;
       if (appIsAway()) {
@@ -3326,6 +3359,12 @@ function AppShell() {
     pushOpenRef.current = () => {
       const target = pendingOpen;
       if (!target || authStage !== "app" || switchingSpace) return;
+      // A calendar reminder opens its event, whatever space is on screen.
+      if (target.eventId && !target.conversationId) {
+        setPendingOpen(null);
+        openNotification("", "", target.id);
+        return;
+      }
       if (target.spaceId && target.spaceId !== ws && workspaces.some((w) => w.id === target.spaceId)) {
         void switchWorkspace(target.spaceId);
         return;
@@ -3758,6 +3797,8 @@ function AppShell() {
   // The import is a modal now, not a full screen, so the app has to stay drawn behind it rather than
   // going blank. The content pane and its title fall back to whatever view the import was opened
   // over. Prefs and instance admin still replace the screen, so they are not folded in here.
+  // The calendar draws times in the viewer's own zone: their profile's, else this browser's.
+  const viewerTimeZone = session?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const contentView = view === "import" ? prevView : view;
   const contentTitle = contentView === "channel" ? (dm ? dm.name : `# ${chan.name}`) : (VIEW_TITLES[contentView] ? t(VIEW_TITLES[contentView]) : wsName);
 
@@ -4028,6 +4069,20 @@ function AppShell() {
             ...channels.filter((c) => c.member !== false).map((c) => ({ id: c.id, name: c.name, kind: "channel" as const, fav: c.fav })),
             ...visibleDms.filter((d) => !d.bot).map((d) => ({ id: d.id, name: d.name, kind: "dm" as const, lastAt: d.lastMessage?.at })),
           ]}
+        />
+      ) : null}
+      {contentView === "calendar" ? (
+        <CalendarScreen
+          key={`${ws}:${calendarFocus?.at ?? ""}`}
+          focus={calendarFocus ?? undefined}
+          compact={compact}
+          timeZone={viewerTimeZone}
+          spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
+          spaceId={ws}
+          spaceName={wsName}
+          onBack={compact ? backToTabs : undefined}
+          onLeave={compact ? undefined : () => setView("channel")}
+          onNotify={showToast}
         />
       ) : null}
       {contentView === "settings" ? (
@@ -4469,6 +4524,17 @@ function AppShell() {
             </div>
           </>
         ) : null}
+        {mobileTab === "calendar" ? (
+          <CalendarScreen
+            key={calendarFocus?.at ?? ""}
+            focus={calendarFocus ?? undefined}
+            compact
+            timeZone={viewerTimeZone}
+            spaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
+            rememberFilter
+            onNotify={showToast}
+          />
+        ) : null}
         {mobileTab === "activity" ? (
           <>
             <MobileHeader title={t("tabs.activity")} currentUser={currentUser} presence={myPresence} onYou={() => setYouSheet(true)} onSearch={() => setModal("search")} />
@@ -4484,7 +4550,7 @@ function AppShell() {
             </div>
           </>
         ) : null}
-        {mobileTab !== "activity" ? <ComposeFab onClick={() => setModal("newMessage")} /> : null}
+        {mobileTab === "home" || mobileTab === "messages" ? <ComposeFab onClick={() => setModal("newMessage")} /> : null}
       </main>
     );
     return (
@@ -4506,10 +4572,11 @@ function AppShell() {
               tabs={[
                 { id: "home", label: t("tabs.home"), icon: "house", badge: mentionUnread || undefined },
                 { id: "messages", label: t("tabs.messages"), icon: "message-square", badge: visibleDms.reduce((n, d) => n + d.unread, 0) || undefined },
+                { id: "calendar", label: t("calendar.title"), icon: "calendar" },
                 { id: "activity", label: t("tabs.activity"), icon: "bell", badge: notifUnread || undefined },
               ]}
               active={mobileTab}
-              onSelect={(id) => setMobileTab(id as "home" | "messages" | "activity")}
+              onSelect={(id) => setMobileTab(id as "home" | "messages" | "calendar" | "activity")}
             />
           )}
         </div>
@@ -4529,7 +4596,8 @@ function AppShell() {
           style={{ ...switchingStyle, flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}
           aria-busy={switchingSpace || undefined}
         >
-          {renderSidebar("tablet")}
+          {/* The calendar brings its own column, in place of the space's. */}
+          {contentView === "calendar" ? null : renderSidebar("tablet")}
           {content}
         </div>
         {spaces}
@@ -4546,7 +4614,7 @@ function AppShell() {
         style={{ ...switchingStyle, flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}
         aria-busy={switchingSpace || undefined}
       >
-        {desktopSidebar}
+        {contentView === "calendar" ? null : desktopSidebar}
         {content}
       </div>
       {overlays}

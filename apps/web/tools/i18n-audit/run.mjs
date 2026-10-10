@@ -305,6 +305,11 @@ function findHardCoded(source, path) {
  * Each entry is that claim, made once, in writing.
  */
 const ALLOWED_DUPLICATES = new Set([
+  // The calendar's one-day view and the light theme's name are both "Jour" in French, and "Day" in
+  // English, by coincidence: one is a span of time, the other daylight. A language that calls the
+  // light theme "Clair" must be able to keep "Jour" for the view.
+  "calendar.view.day",
+
   // The import screen counts accounts, conversations, messages and files. The same four words label
   // a navigation entry, a switcher heading, a mobile tab and a search filter elsewhere, and they
   // are the same words by coincidence rather than by meaning: renaming a tab must not silently

@@ -90,6 +90,7 @@ export const STATES = [
   { id: "channel-members", label: "Canal + panneau membres", query: "stage=app&view=channel&channel=general&panel=members" },
   { id: "channel-files", label: "Canal + panneau fichiers", query: "stage=app&view=channel&channel=general&panel=files" },
   { id: "files", label: "Fichiers de l'espace", query: "stage=app&view=files" },
+  { id: "calendar", label: "Calendrier", query: "stage=app&view=calendar" },
 
   // Compact-only: the pushed content full-screen (in the desktop shell these render the same as
   // their non-pushed twin, but on narrow viewports they exercise the conversation/content views
@@ -97,6 +98,7 @@ export const STATES = [
   { id: "channel-open", label: "Canal ouvert (compact)", query: "stage=app&view=channel&channel=general&push=1" },
   { id: "dm-open", label: "Message direct ouvert (compact)", query: "stage=app&view=channel&channel=yanis&push=1" },
   { id: "files-open", label: "Fichiers ouvert (compact)", query: "stage=app&view=files&push=1" },
+  { id: "calendar-open", label: "Calendrier ouvert (compact)", query: "stage=app&view=calendar&push=1" },
   { id: "settings-open", label: "Reglages ouvert (compact)", query: "stage=app&view=settings&push=1" },
   { id: "settings", label: "Reglages de l'espace", query: "stage=app&view=settings" },
   { id: "prefs", label: "Preferences", query: "stage=app&view=prefs" },

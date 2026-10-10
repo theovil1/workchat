@@ -606,8 +606,8 @@ async fn notify_mention(
         id: Set(Uuid::new_v4()),
         user_id: Set(recipient),
         kind: Set("mention".to_owned()),
-        conversation_id: Set(conversation_id),
-        message_id: Set(message_id),
+        conversation_id: Set(Some(conversation_id)),
+        message_id: Set(Some(message_id)),
         actor_id: Set(Some(actor)),
         read_at: Set(None),
         ..Default::default()

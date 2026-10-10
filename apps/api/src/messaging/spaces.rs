@@ -214,6 +214,10 @@ pub(crate) async fn create_owned_space<C: ConnectionTrait>(
     }
     .insert(txn)
     .await?;
+    // And its first calendar, named after it.
+    crate::calendar::authz::create_space_default(txn, space_id, Some(owner))
+        .await
+        .map_err(|_| ApiError::Internal)?;
     let mut space = spaces::Entity::find_by_id(space_id)
         .one(txn)
         .await?
@@ -331,6 +335,9 @@ pub async fn update_space(
         remember_slug(&txn, space_id, &fresh).await?;
         fresh
     };
+    let calendar = crate::calendar::authz::follow_space_name(&txn, space_id, &space.name, name)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     let mut active = space.into_active_model();
     active.name = Set(name.to_owned());
     active.slug = Set(slug);
@@ -339,6 +346,10 @@ pub async fn update_space(
     txn.commit().await?;
 
     broadcast_space_change(&state, &updated, session.user_id).await;
+    if let Some(calendar) = calendar {
+        // Best effort: the rename stands even if nobody hears about the calendar's new name now.
+        let _ = crate::calendar::calendars::announce(&state, &calendar).await;
+    }
     Ok(Json(SpaceUpdatedDto {
         id: updated.id,
         name: updated.name.clone(),

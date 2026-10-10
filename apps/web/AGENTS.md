@@ -326,6 +326,28 @@ not rendered (the `message_link_previews` table exists but nothing populates or 
 server-side link fetching needs a sovereignty/SSRF design first). A member profile still falls back to
 the mock by name only when no user id is resolvable for them (the member list now supplies ids).
 
+## Calendar screen (`features/calendar/`)
+
+One screen, two doors: a space's "Calendar" entry opens it filtered on that space, the phone's
+"Calendar" tab on the last filter chosen (`localStorage`). On a desktop and a tablet the calendar's
+own column (a way back to the space, a small month, the calendars) takes the place of the space's
+column while it is open, as calendars do, rather than adding a second one beside it; on a phone the
+same list opens as a panel from the header. Outside the filter, occurrences stay drawn,
+hatched grey; the viewer's own calendars are always in full. Times are drawn in the profile's time
+zone, else the browser's.
+
+- Pure logic, imported by nothing and tested with `node --test`: `model.ts` (days and periods in a
+  time zone with `Intl`, `inFilter`, `layoutDay` placing overlapping events side by side, `occursOn`),
+  `rule.ts` (RRULE value <-> the repetition form; a rule the form cannot show reads as `null`) and
+  `rulePhrase.ts` (the rule in words, from whole sentences per language under `calendar.rule.*`).
+  `rule.ts` does not import `model.ts`: Next's TypeScript settings refuse the `.ts` extension Node's
+  runner needs.
+- `CalendarScreen.tsx` assembles; `TimeGrid` (week, day), `MonthView` (desktop cells, phone dots),
+  `ListView`, `CalendarSidebar` (with `FilterChips` and `MiniMonth`), `CalendarOverlays` (the windows: `EventDetails`,
+  `EventForm` with `RecurrenceEditor` and `SeriesScopeDialog`, `CalendarSettingsDialog` with the
+  subscription `FeedsSection`). Data: `lib/data/calendar.ts`; live changes arrive as
+  `calendar.changed` through `lib/calendarEvents.ts` and reload what is on screen.
+
 ## Files screen (`features/files/`)
 
 The space's files, shown one folder at a time as a Drive shows them. `FilesScreen.tsx` only
