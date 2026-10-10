@@ -1645,6 +1645,11 @@
       "tentative": "Participera peut-être",
       "declined": "Ne participe pas",
       "needs_action": "N'a pas encore répondu"
+    },
+    "myAnswer": {
+      "needs_action": "À répondre",
+      "tentative": "Participation incertaine",
+      "declined": "Vous avez refusé"
     }
   },
   "invitationPage": {

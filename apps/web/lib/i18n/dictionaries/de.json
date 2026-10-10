@@ -1622,6 +1622,11 @@
       "tentative": "Nimmt vielleicht teil",
       "declined": "Nimmt nicht teil",
       "needs_action": "Noch keine Antwort"
+    },
+    "myAnswer": {
+      "needs_action": "Zu beantworten",
+      "tentative": "Noch unsicher",
+      "declined": "Abgelehnt"
     }
   },
   "invitationPage": {

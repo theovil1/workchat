@@ -1750,6 +1750,11 @@
       "tentative": "Może weźmie udział",
       "declined": "Nie weźmie udziału",
       "needs_action": "Jeszcze bez odpowiedzi"
+    },
+    "myAnswer": {
+      "needs_action": "Do odpowiedzi",
+      "tentative": "Udział niepewny",
+      "declined": "Odrzucono"
     }
   },
   "invitationPage": {

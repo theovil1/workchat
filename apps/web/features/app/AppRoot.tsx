@@ -146,6 +146,7 @@ import {
   type NotifLevel,
   type NotifPrefs,
   sameNotifPrefs,
+  isInvitationKind,
   isMention,
   type NotifKind,
   notifSummary,
@@ -1836,8 +1837,9 @@ function AppShell() {
       notifs.filter(
         (n) =>
           // A reminder or an invitation from a personal calendar belongs to no space: every space
-          // shows it.
-          (n.spaceId === ws || (Boolean(n.reminder) && !n.spaceId)) &&
+          // shows it. So does an invitation (and its change, cancellation or refusal) from any
+          // space: it asks something of this person, wherever they are reading.
+          (n.spaceId === ws || (Boolean(n.reminder) && (!n.spaceId || isInvitationKind(n.kind)))) &&
           passesPref(n, channelPrefs[n.channelId], settings.notif, wsNotifyLevel),
       ),
     [notifs, ws, channelPrefs, settings.notif, wsNotifyLevel],

@@ -1686,6 +1686,11 @@
       "tentative": "Forse partecipa",
       "declined": "Non partecipa",
       "needs_action": "Non ha ancora risposto"
+    },
+    "myAnswer": {
+      "needs_action": "Da rispondere",
+      "tentative": "Partecipazione incerta",
+      "declined": "Hai rifiutato"
     }
   },
   "invitationPage": {

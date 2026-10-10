@@ -1686,6 +1686,11 @@
       "tentative": "Quizá asista",
       "declined": "No asiste",
       "needs_action": "Aún no ha respondido"
+    },
+    "myAnswer": {
+      "needs_action": "Por responder",
+      "tentative": "Asistencia dudosa",
+      "declined": "Has rechazado"
     }
   },
   "invitationPage": {

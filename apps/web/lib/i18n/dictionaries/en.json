@@ -1622,6 +1622,11 @@
       "tentative": "Maybe going",
       "declined": "Not going",
       "needs_action": "Not answered yet"
+    },
+    "myAnswer": {
+      "needs_action": "To answer",
+      "tentative": "Not sure yet",
+      "declined": "You declined"
     }
   },
   "invitationPage": {
